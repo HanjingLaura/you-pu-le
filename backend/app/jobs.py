@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -10,6 +12,12 @@ from typing import Literal
 
 from .config import DATA_DIR
 from .instruments import DEFAULT_INSTRUMENT
+
+JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def is_job_id(job_id: str) -> bool:
+    return bool(JOB_ID_RE.fullmatch(job_id))
 
 Stage = Literal[
     "queued",
@@ -165,7 +173,19 @@ class JobStore:
             self._jobs[job.id] = job
         self._write(job)
 
+    def purge(self, job_id: str) -> None:
+        if not is_job_id(job_id):
+            return
+        with self._lock:
+            self._jobs.pop(job_id, None)
+        folder = DATA_DIR / job_id
+        resolved = folder.resolve()
+        if resolved.exists() and resolved.parent == DATA_DIR.resolve():
+            shutil.rmtree(resolved, ignore_errors=True)
+
     def get(self, job_id: str) -> Job | None:
+        if not is_job_id(job_id):
+            return None
         with self._lock:
             cached = self._jobs.get(job_id)
         if cached:

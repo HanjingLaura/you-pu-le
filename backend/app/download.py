@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ipaddress
 import logging
+import socket
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -18,6 +20,19 @@ def validate_url(raw: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise AudioError("请粘贴有效的 http 或 https 链接。")
+    host = parsed.hostname
+    if not host:
+        raise AudioError("请粘贴有效的 http 或 https 链接。")
+    if host.lower() in {"localhost"}:
+        raise AudioError("不能拉取内网地址。")
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except socket.gaierror as exc:
+        raise AudioError("这个链接解析不了。") from exc
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or not ip.is_global:
+            raise AudioError("不能拉取内网地址。")
     return url
 
 

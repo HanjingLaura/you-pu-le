@@ -61,8 +61,12 @@ def estimate_bpm(notes: list[PianoNote]) -> float:
     iois = iois[(iois > 0.12) & (iois < 1.6)]
     if iois.size == 0:
         return 80.0
-    hist, edges = np.histogram(iois, bins=18)
-    beat = float((edges[int(np.argmax(hist))] + edges[int(np.argmax(hist)) + 1]) / 2)
+    spread = float(np.percentile(iois, 75) - np.percentile(iois, 25))
+    if spread < 0.08:
+        beat = float(np.median(iois))
+    else:
+        hist, edges = np.histogram(iois, bins=18)
+        beat = float((edges[int(np.argmax(hist))] + edges[int(np.argmax(hist)) + 1]) / 2)
     bpm = 60.0 / beat
     while bpm < 52:
         bpm *= 2
@@ -162,9 +166,9 @@ def assign_hands(notes: list[PianoNote]) -> list[PianoNote]:
 
 
 def _clip_durations(notes: list[PianoNote]) -> None:
-    by_hand: dict[str, list[PianoNote]] = {"left": [], "right": []}
+    by_hand: dict[str, list[PianoNote]] = {}
     for item in notes:
-        by_hand[item.hand].append(item)
+        by_hand.setdefault(item.hand, []).append(item)
     for hand_notes in by_hand.values():
         hand_notes.sort(key=lambda item: (item.start, item.midi))
         for index, item in enumerate(hand_notes):
@@ -195,6 +199,9 @@ def _snap(value: float) -> float:
 
 
 def _snap_duration(value: float) -> float:
+    for simple in (0.25, 0.5, 1.0, 1.5, 2.0):
+        if abs(value - simple) <= 0.2:
+            return simple
     snapped = _snap(value)
     return max(0.0625, snapped)
 
@@ -226,3 +233,34 @@ def prepare_piano(midi_path, bpm: float | None = None) -> tuple[list[PianoEvent]
     notes = load_notes(midi_path)
     tempo = bpm or estimate_bpm(notes)
     return to_events(notes, tempo), tempo
+
+
+def quantize_voice(notes: list[PianoNote], bpm: float) -> list[PianoEvent]:
+    voiced = [
+        PianoNote(
+            midi=item.midi,
+            start=item.start,
+            duration=item.duration,
+            velocity=item.velocity,
+            hand="melody",
+        )
+        for item in notes
+    ]
+    _clip_durations(voiced)
+    beat = 60.0 / bpm
+    buckets: dict[float, PianoEvent] = {}
+    for item in voiced:
+        onset = _snap(item.start / beat)
+        duration = _snap_duration(item.duration / beat)
+        event = buckets.get(onset)
+        if event is None:
+            buckets[onset] = PianoEvent(onset=onset, duration=duration, pitches=[item.midi], hand="melody")
+        else:
+            if item.midi not in event.pitches:
+                event.pitches.append(item.midi)
+            event.duration = max(event.duration, duration)
+    events = list(buckets.values())
+    for event in events:
+        event.pitches.sort()
+    events.sort(key=lambda item: item.onset)
+    return events

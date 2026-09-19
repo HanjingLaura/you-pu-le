@@ -4,8 +4,7 @@ import copy
 import logging
 from pathlib import Path
 
-import pretty_midi
-from music21 import chord, clef, converter, instrument, key as keymod
+from music21 import chord, clef, instrument, key as keymod
 from music21 import layout, metadata, meter, note, pitch, stream, tempo
 
 from .instruments import (
@@ -15,41 +14,12 @@ from .instruments import (
     music21_clef,
     music21_instrument,
 )
-from .piano import prepare_piano
+from .piano import estimate_bpm, load_notes, prepare_piano, quantize_voice
 
 log = logging.getLogger("keyprint")
 
-
-def _estimate_bpm(midi_path: Path) -> float:
-    midi = pretty_midi.PrettyMIDI(str(midi_path))
-    try:
-        bpm = float(midi.estimate_tempo())
-    except Exception:
-        bpm = 120.0
-    if not bpm or bpm < 40 or bpm > 208:
-        bpm = 120.0
-    return round(bpm)
-
-
-def _rewrite_tempo(midi_path: Path, bpm: float) -> None:
-    source = pretty_midi.PrettyMIDI(str(midi_path))
-    rewritten = pretty_midi.PrettyMIDI(initial_tempo=bpm)
-    for inst in source.instruments:
-        rewritten.instruments.append(inst)
-    rewritten.write(str(midi_path))
-
-
-def _place_pitches(part: stream.Part, pitches, source, offset: float) -> None:
-    if not pitches:
-        return
-    if len(pitches) == 1:
-        placed = note.Note(pitches[0])
-    else:
-        placed = chord.Chord(pitches)
-    placed.duration = copy.deepcopy(source.duration)
-    if hasattr(source, "volume") and source.volume is not None:
-        placed.volume = copy.deepcopy(source.volume)
-    part.insert(offset, placed)
+_MAJOR = (0, 2, 4, 5, 7, 9, 11)
+_MINOR = (0, 2, 3, 5, 7, 8, 10)
 
 
 def _fold_midi(value: int, low: int | None, high: int | None) -> int:
@@ -63,18 +33,6 @@ def _fold_midi(value: int, low: int | None, high: int | None) -> int:
     return max(low, min(high, folded))
 
 
-def _written_pitches(source, spec: InstrumentSpec) -> list:
-    if isinstance(source, note.Note):
-        values = [source.pitch.midi]
-    else:
-        values = [item.midi for item in source.pitches]
-    written = []
-    for value in values:
-        folded = _fold_midi(value, spec.sounding_low, spec.sounding_high)
-        written.append(pitch.Pitch(midi=folded + spec.write_semitones))
-    return written
-
-
 def _written_key(detected_key, spec: InstrumentSpec):
     if not spec.write_semitones:
         return detected_key
@@ -84,6 +42,40 @@ def _written_key(detected_key, spec: InstrumentSpec):
         return detected_key
 
 
+def _key_from_pc(pc: int, mode: str) -> keymod.Key:
+    name = pitch.Pitch(midi=60 + (pc % 12)).name
+    return keymod.Key(name, mode)
+
+
+def _fits_mode(unique: set[int], tonic: int, intervals: tuple[int, ...]) -> bool:
+    scale = {(tonic + step) % 12 for step in intervals}
+    return bool(unique) and unique <= scale
+
+
+def detect_key(midis: list[int]):
+    if not midis:
+        return keymod.Key("C")
+    unique = {value % 12 for value in midis}
+    bass = min(midis) % 12
+    if _fits_mode(unique, bass, _MAJOR):
+        return _key_from_pc(bass, "major")
+    if _fits_mode(unique, bass, _MINOR):
+        return _key_from_pc(bass, "minor")
+
+    probe = stream.Stream()
+    for index, midi_number in enumerate(midis[:64]):
+        probe.insert(index * 0.5, note.Note(midi_number, quarterLength=0.5))
+    try:
+        analyzed = probe.analyze("key")
+    except Exception:
+        analyzed = keymod.Key("C")
+    if analyzed.mode == "minor":
+        relative = (analyzed.tonic.midi + 3) % 12
+        if _fits_mode(unique, relative, _MAJOR):
+            return _key_from_pc(relative, "major")
+    return analyzed
+
+
 def midi_to_musicxml(
     midi_path: Path,
     xml_path: Path,
@@ -91,26 +83,19 @@ def midi_to_musicxml(
     instrument_id: str = DEFAULT_INSTRUMENT,
 ) -> dict:
     spec = get_instrument(instrument_id)
-    bpm = _estimate_bpm(midi_path)
 
     if spec.grand:
-        events, bpm = prepare_piano(midi_path, bpm)
-        try:
-            detected_key = _key_from_events(events)
-        except Exception:
-            detected_key = keymod.Key("C")
+        events, bpm = prepare_piano(midi_path)
+        detected_key = detect_key([pitch for event in events for pitch in event.pitches])
         score = _piano_score(events, detected_key, bpm, title)
         note_count = sum(len(event.pitches) for event in events)
     else:
-        _rewrite_tempo(midi_path, bpm)
-        raw = converter.parse(str(midi_path))
-        raw.quantize([8, 6, 4, 3], processOffsets=True, processDurations=True, inPlace=True)
-        try:
-            detected_key = raw.analyze("key")
-        except Exception:
-            detected_key = keymod.Key("C")
-        score = _single_staff_score(raw, detected_key, bpm, title, spec)
-        note_count = len(list(raw.flatten().notes))
+        notes = load_notes(midi_path)
+        bpm = estimate_bpm(notes)
+        events = quantize_voice(notes, bpm)
+        detected_key = detect_key([pitch for event in events for pitch in event.pitches])
+        score = _single_staff_from_events(events, detected_key, bpm, title, spec)
+        note_count = sum(len(event.pitches) for event in events)
 
     try:
         score.makeMeasures(inPlace=True)
@@ -127,17 +112,6 @@ def midi_to_musicxml(
         "note_count": note_count,
         "instrument": spec.id,
     }
-
-
-def _key_from_events(events) -> keymod.Key:
-    probe = stream.Stream()
-    for event in events:
-        for midi_number in event.pitches:
-            probe.insert(event.onset, note.Note(midi_number, quarterLength=max(0.25, event.duration)))
-    try:
-        return probe.analyze("key")
-    except Exception:
-        return keymod.Key("C")
 
 
 def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
@@ -186,7 +160,15 @@ def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
     return score
 
 
-def _single_staff_score(raw, detected_key, bpm: float, title: str, spec: InstrumentSpec) -> stream.Score:
+def _written_event_pitches(event, spec: InstrumentSpec) -> list:
+    written = []
+    for value in event.pitches:
+        folded = _fold_midi(value, spec.sounding_low, spec.sounding_high)
+        written.append(pitch.Pitch(midi=folded + spec.write_semitones))
+    return written
+
+
+def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec: InstrumentSpec) -> stream.Score:
     part = stream.Part(id="P1")
     part.partName = spec.name
     part.insert(0, music21_instrument(spec))
@@ -195,17 +177,16 @@ def _single_staff_score(raw, detected_key, bpm: float, title: str, spec: Instrum
     part.insert(0, tempo.MetronomeMark(number=bpm))
     part.insert(0, music21_clef(spec))
 
-    for el in raw.flatten().notes:
-        offset = float(el.offset)
-        written = _written_pitches(el, spec)
+    for event in events:
+        written = _written_event_pitches(event, spec)
         if not written:
             continue
         if len(written) == 1:
             placed = note.Note(written[0])
         else:
             placed = chord.Chord(written)
-        placed.duration = copy.deepcopy(el.duration)
-        part.insert(offset, placed)
+        placed.quarterLength = event.duration
+        part.insert(event.onset, placed)
 
     try:
         part.makeRests(fillGaps=True, inPlace=True)

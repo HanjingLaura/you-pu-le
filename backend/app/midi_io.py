@@ -28,3 +28,21 @@ def to_concert_midi(source: Path, dest: Path, source_instrument: str) -> float:
                 item.pitch = int(max(0, min(127, item.pitch - shift)))
         parsed.write(str(dest))
     return float(parsed.get_end_time())
+
+
+def to_written_midi(concert_path: Path, dest: Path, instrument_id: str) -> Path:
+    spec = get_instrument(instrument_id)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    parsed = pretty_midi.PrettyMIDI(str(concert_path))
+    shift = spec.write_semitones
+    if shift:
+        for inst in parsed.instruments:
+            if inst.is_drum:
+                continue
+            for item in inst.notes:
+                item.pitch = int(max(0, min(127, item.pitch + shift)))
+    if dest.resolve() != concert_path.resolve():
+        parsed.write(str(dest))
+    elif shift:
+        parsed.write(str(dest))
+    return dest

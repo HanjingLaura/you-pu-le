@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES
 from .ffmpeg_bin import ffmpeg_executable
 from .instruments import DEFAULT_INSTRUMENT, get_instrument, list_instruments
 from .jobs import Job, store
-from .midi_io import is_midi, to_concert_midi
+from .midi_io import is_midi, to_concert_midi, to_written_midi
 from .score import demo_scale_musicxml, midi_to_musicxml
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -121,18 +122,21 @@ async def create_job(
         )
         upload_path = job.directory / f"source{suffix}"
         size = 0
-        with upload_path.open("wb") as handle:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    upload_path.unlink(missing_ok=True)
-                    raise HTTPException(400, "文件超过 80MB。请先剪短或压一下。")
-                handle.write(chunk)
-        if size == 0:
-            raise HTTPException(400, "上传是空文件。")
+        try:
+            with upload_path.open("wb") as handle:
+                while True:
+                    chunk = await file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        raise HTTPException(400, "文件超过 80MB。请先剪短或压一下。")
+                    handle.write(chunk)
+            if size == 0:
+                raise HTTPException(400, "上传是空文件。")
+        except Exception:
+            store.purge(job.id)
+            raise
     elif source_url:
         try:
             validate_url(source_url)
@@ -166,13 +170,25 @@ def get_job(job_id: str) -> dict:
     return job.to_dict()
 
 
+def _download_stem(filename: str) -> str:
+    stem = Path(filename).stem
+    cleaned = re.sub(r"[^\w\u4e00-\u9fff\-]+", "_", stem)[:80]
+    return cleaned or "score"
+
+
 @app.get("/jobs/{job_id}/midi")
 def download_midi(job_id: str) -> FileResponse:
     job = _require_done(job_id)
-    path = job.directory / "score.mid"
-    if not path.exists():
+    concert = job.directory / "score.mid"
+    if not concert.exists():
         raise HTTPException(404, "MIDI 还没生成。")
-    download_name = Path(job.filename).stem + ".mid"
+    spec = get_instrument(job.instrument)
+    path = concert
+    if spec.write_semitones:
+        written = job.directory / "score-written.mid"
+        to_written_midi(concert, written, spec.id)
+        path = written
+    download_name = _download_stem(job.filename) + ".mid"
     return FileResponse(path, filename=download_name, media_type="audio/midi")
 
 
@@ -182,7 +198,7 @@ def download_musicxml(job_id: str) -> FileResponse:
     path = job.directory / "score.musicxml"
     if not path.exists():
         raise HTTPException(404, "乐谱还没生成。")
-    download_name = Path(job.filename).stem + ".musicxml"
+    download_name = _download_stem(job.filename) + ".musicxml"
     return FileResponse(
         path,
         filename=download_name,
