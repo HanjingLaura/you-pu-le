@@ -35,6 +35,7 @@ export type Job = {
   key_name: string | null;
   bpm: number | null;
   instrument: string;
+  source_instrument?: string;
   midi_url: string | null;
   musicxml_url: string | null;
 };
@@ -71,11 +72,17 @@ export async function listInstruments(): Promise<Instrument[]> {
   }
 }
 
-export async function createJob(file?: File, url?: string, instrument?: string): Promise<Job> {
+export async function createJob(
+  file?: File,
+  url?: string,
+  instrument?: string,
+  sourceInstrument?: string,
+): Promise<Job> {
   const body = new FormData();
   if (file) body.append("file", file);
   if (url) body.append("url", url);
   if (instrument) body.append("instrument", instrument);
+  if (sourceInstrument) body.append("source_instrument", sourceInstrument);
   const response = await fetch(`${API_BASE}/jobs`, {
     method: "POST",
     body,

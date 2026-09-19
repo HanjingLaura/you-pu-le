@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { AppNav } from "@/components/AppNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "有谱了",
-  description: "上传钢琴独奏，扒成大谱表草稿。",
+  description: "校音、节拍、扒谱、乐器移调。",
 };
 
 export default function RootLayout({
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        {children}
+        <AppNav />
+      </body>
     </html>
   );
 }

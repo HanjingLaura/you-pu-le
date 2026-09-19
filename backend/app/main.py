@@ -15,8 +15,8 @@ from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES
 from .ffmpeg_bin import ffmpeg_executable
 from .instruments import DEFAULT_INSTRUMENT, get_instrument, list_instruments
 from .jobs import Job, store
+from .midi_io import is_midi, to_concert_midi
 from .score import demo_scale_musicxml, midi_to_musicxml
-from .transcribe import choose_device, model_loaded, transcribe_wav
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("keyprint")
@@ -67,13 +67,21 @@ def health() -> dict:
     except Exception:
         ffmpeg_path = None
         ffmpeg_ok = False
+    try:
+        from .transcribe import choose_device, model_loaded
+
+        device = choose_device()
+        loaded = model_loaded()
+    except Exception:
+        device = "unavailable"
+        loaded = False
     return {
         "ok": ffmpeg_ok,
         "ffmpeg": ffmpeg_ok,
         "ffmpeg_path": ffmpeg_path,
-        "device": choose_device(),
+        "device": device,
         "checkpoint_ready": checkpoint_ready(),
-        "model_loaded": model_loaded(),
+        "model_loaded": loaded,
     }
 
 
@@ -95,16 +103,22 @@ async def create_job(
     file: UploadFile | None = File(None),
     url: str | None = Form(None),
     instrument: str | None = Form(None),
+    source_instrument: str | None = Form(None),
 ) -> dict:
     spec = _parse_instrument(instrument)
+    source_spec = _parse_instrument(source_instrument)
     source_url = url.strip() if url else None
     if file and file.filename:
         filename = file.filename
         suffix = Path(filename).suffix.lower()
         if suffix not in ALLOWED_SUFFIXES:
-            raise HTTPException(400, "只接受视频或音频：mp4 / mov / webm / wav / mp3 / m4a / flac。")
+            raise HTTPException(400, "只接受视频、音频或 MIDI：mp4 / mov / webm / wav / mp3 / m4a / flac / mid。")
 
-        job = store.create(filename, instrument=spec.id)
+        job = store.create(
+            filename,
+            instrument=spec.id,
+            source_instrument=source_spec.id,
+        )
         upload_path = job.directory / f"source{suffix}"
         size = 0
         with upload_path.open("wb") as handle:
@@ -124,9 +138,14 @@ async def create_job(
             validate_url(source_url)
         except AudioError as exc:
             raise HTTPException(400, str(exc)) from exc
-        job = store.create(source_url, source_url=source_url, instrument=spec.id)
+        job = store.create(
+            source_url,
+            source_url=source_url,
+            instrument=spec.id,
+            source_instrument=source_spec.id,
+        )
     else:
-        raise HTTPException(400, "请上传视频 / 音频，或粘贴链接。")
+        raise HTTPException(400, "请上传视频 / 音频 / MIDI，或粘贴链接。")
 
     background_tasks.add_task(run_job, job.id)
     store.save(job)
@@ -265,24 +284,34 @@ def _run_job_locked(job: Job) -> None:
         midi_path = job.directory / "score.mid"
         xml_path = job.directory / "score.musicxml"
 
-        if not wav_path.exists():
-            job.stage = "extracting"
-            job.message = "正在抽出音频"
+        if is_midi(source):
+            job.stage = "scoring"
+            job.message = "正在按乐器移调"
             store.save(job)
-            duration = extract_wav(source, wav_path)
+            duration = to_concert_midi(source, midi_path, job.source_instrument)
             job.duration_sec = round(duration, 2)
             store.save(job)
-        elif job.duration_sec is None:
-            job.duration_sec = 0
+        else:
+            if not wav_path.exists():
+                job.stage = "extracting"
+                job.message = "正在抽出音频"
+                store.save(job)
+                duration = extract_wav(source, wav_path)
+                job.duration_sec = round(duration, 2)
+                store.save(job)
+            elif job.duration_sec is None:
+                job.duration_sec = 0
 
-        if not midi_path.exists():
-            job.stage = "transcribing"
-            job.message = "正在识别琴键（这一步最慢）"
-            store.save(job)
-            transcribed = transcribe_wav(wav_path, midi_path)
-            job.note_count = transcribed["note_count"]
-            job.pedal_count = transcribed["pedal_count"]
-            store.save(job)
+            if not midi_path.exists():
+                from .transcribe import transcribe_wav
+
+                job.stage = "transcribing"
+                job.message = "正在识别琴键（这一步最慢）"
+                store.save(job)
+                transcribed = transcribe_wav(wav_path, midi_path)
+                job.note_count = transcribed["note_count"]
+                job.pedal_count = transcribed["pedal_count"]
+                store.save(job)
 
         spec = get_instrument(job.instrument)
         job.stage = "scoring"

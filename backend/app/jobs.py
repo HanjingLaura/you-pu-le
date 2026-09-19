@@ -37,6 +37,7 @@ class Job:
     bpm: float | None = None
     source_url: str | None = None
     instrument: str = DEFAULT_INSTRUMENT
+    source_instrument: str = DEFAULT_INSTRUMENT
 
     @property
     def directory(self) -> Path:
@@ -58,6 +59,7 @@ class Job:
             "key_name": self.key_name,
             "bpm": self.bpm,
             "instrument": self.instrument,
+            "source_instrument": self.source_instrument,
             "midi_url": f"/jobs/{self.id}/midi" if self.stage == "done" else None,
             "musicxml_url": f"/jobs/{self.id}/musicxml" if self.stage == "done" else None,
         }
@@ -78,6 +80,7 @@ class Job:
             bpm=data.get("bpm"),
             source_url=data.get("source_url"),
             instrument=data.get("instrument") or DEFAULT_INSTRUMENT,
+            source_instrument=data.get("source_instrument") or DEFAULT_INSTRUMENT,
         )
 
 
@@ -138,12 +141,19 @@ class JobStore:
             message="草稿谱已生成" if done else "正在排谱",
         )
 
-    def create(self, filename: str, source_url: str | None = None, instrument: str = DEFAULT_INSTRUMENT) -> Job:
+    def create(
+        self,
+        filename: str,
+        source_url: str | None = None,
+        instrument: str = DEFAULT_INSTRUMENT,
+        source_instrument: str = DEFAULT_INSTRUMENT,
+    ) -> Job:
         job = Job(
             id=uuid.uuid4().hex,
             filename=filename,
             source_url=source_url,
             instrument=instrument,
+            source_instrument=source_instrument,
         )
         with self._lock:
             self._jobs[job.id] = job

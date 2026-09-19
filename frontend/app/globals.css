@@ -26,6 +26,7 @@ html,
 body {
   min-height: 100%;
   margin: 0;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   background: var(--paper);
   color: var(--ink);
   font-family:
@@ -676,6 +677,234 @@ a:focus-visible {
   color: #000080;
 }
 
+.app-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+  padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line-soft);
+  background: rgb(255 255 255 / 0.96);
+  backdrop-filter: saturate(1.2) blur(10px);
+}
+
+.app-nav__item {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+}
+
+.app-nav__item.is-active {
+  color: var(--ink);
+}
+
+.app-nav__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.instrument-select {
+  width: 100%;
+  height: 48px;
+  border: 1px solid #d2d2d7;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #ffffff;
+  color: #151515;
+  font-size: 14px;
+  outline: none;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #86868b 50%),
+    linear-gradient(135deg, #86868b 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.instrument-select:hover:not(:disabled) {
+  border-color: #b8b8bd;
+}
+
+.instrument-select:focus {
+  border-color: #86868b;
+  box-shadow: 0 0 0 3px rgb(21 21 21 / 0.06);
+}
+
+.instrument-select:disabled {
+  opacity: 0.6;
+}
+
+.slider-field input[type="range"] {
+  width: 100%;
+  accent-color: #151515;
+}
+
+.tuner-stage,
+.metro-stage {
+  margin: 28px 0 8px;
+  text-align: center;
+}
+
+.tuner-note {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 88px;
+  margin: 0;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+
+.tuner-note__name {
+  font-size: 72px;
+  line-height: 0.9;
+}
+
+.tuner-note__octave {
+  margin-top: 10px;
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 22px;
+}
+
+.tuner-note__idle {
+  color: #d2d2d7;
+  font-size: 72px;
+  line-height: 0.9;
+}
+
+.tuner-side {
+  margin: 4px 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tuner-side.is-true {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tuner-gauge {
+  position: relative;
+  height: 28px;
+  margin: 0 auto;
+  max-width: 360px;
+}
+
+.tuner-gauge__track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 13px;
+  height: 2px;
+  background: var(--line);
+}
+
+.tuner-gauge__center {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 2px;
+  height: 12px;
+  background: var(--ink);
+  transform: translateX(-50%);
+}
+
+.tuner-gauge__needle {
+  position: absolute;
+  top: 6px;
+  width: 10px;
+  height: 16px;
+  border-radius: 2px;
+  background: #d2d2d7;
+  transform: translateX(-50%);
+  transition: left 80ms linear, background 160ms ease;
+}
+
+.tuner-gauge__needle.is-on {
+  background: var(--ink);
+}
+
+.tuner-meta,
+.metro-bpm__unit {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metro-bpm {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.metro-bpm__num {
+  font-size: 72px;
+  font-weight: 650;
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+}
+
+.metro-beats {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  min-height: 22px;
+  margin-bottom: 8px;
+}
+
+.metro-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e5e5e7;
+}
+
+.metro-dot.is-accent {
+  background: #c8c8cc;
+}
+
+.metro-dot.is-now {
+  background: #151515;
+}
+
+.metro-stepper {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.metro-meter {
+  justify-content: space-between;
+  padding-top: 8px;
+  min-height: 36px;
+}
+
+.result-rescore {
+  margin: 0 0 16px;
+}
+
 @media (max-width: 640px) {
   .work-panel {
     width: min(560px, calc(100% - 32px));
@@ -685,5 +914,11 @@ a:focus-visible {
   .panel-heading {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .tuner-note__name,
+  .tuner-note__idle,
+  .metro-bpm__num {
+    font-size: 60px;
   }
 }

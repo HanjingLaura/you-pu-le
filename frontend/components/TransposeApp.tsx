@@ -5,22 +5,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   API_BASE,
   DEFAULT_INSTRUMENT,
+  FALLBACK_INSTRUMENTS,
   createJob,
   getJob,
   getMusicXml,
+  listInstruments,
   rescoreJob,
+  type Instrument,
   type Job,
 } from "@/lib/api";
 import { DotMatrixLoader } from "./DotMatrixLoader";
-import { InstrumentPicker, keyLabelForInstrument } from "./InstrumentPicker";
+import { InstrumentSelect } from "./InstrumentSelect";
 import { ScoreViewer } from "./ScoreViewer";
-import { SpiderSolitaire } from "./SpiderSolitaire";
 
-const ACCEPT = ".mp4,.mov,.webm,.mkv,.wav,.mp3,.m4a,.flac,.ogg";
-
-function formatSize(bytes: number) {
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
+const ACCEPT = ".mp4,.mov,.webm,.mkv,.wav,.mp3,.m4a,.flac,.ogg,.mid,.midi";
 
 const STAGE_PROGRESS: Record<string, number> = {
   queued: 6,
@@ -31,7 +29,15 @@ const STAGE_PROGRESS: Record<string, number> = {
   done: 100,
 };
 
-export function KeyprintApp() {
+function formatSize(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function nameOf(id: string, items: Instrument[]) {
+  return items.find((item) => item.id === id)?.name ?? id;
+}
+
+export function TransposeApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
@@ -42,10 +48,22 @@ export function KeyprintApp() {
   const [progress, setProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [rescoring, setRescoring] = useState(false);
-  const [instrumentId, setInstrumentId] = useState(DEFAULT_INSTRUMENT);
+  const [sourceId, setSourceId] = useState(DEFAULT_INSTRUMENT);
+  const [targetId, setTargetId] = useState("alto_sax");
+  const [instruments, setInstruments] = useState<Instrument[]>(FALLBACK_INSTRUMENTS);
+
+  useEffect(() => {
+    let cancelled = false;
+    listInstruments().then((items) => {
+      if (!cancelled && items.length) setInstruments(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const busy = submitting || Boolean(job && job.stage !== "done" && job.stage !== "error");
-  const canSubmit = Boolean(file || url.trim()) && !busy;
+  const canSubmit = Boolean(file || url.trim()) && !busy && sourceId !== targetId;
   const progressLabel = Math.min(99, Math.max(0, Math.round(progress)));
 
   useEffect(() => {
@@ -57,11 +75,11 @@ export function KeyprintApp() {
         setJob(next);
         setProgress((current) => Math.max(current, STAGE_PROGRESS[next.stage] ?? current));
         if (next.stage === "error") {
-          setError(next.error || "转录失败");
+          setError(next.error || "移调失败");
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "无法读取任务状态";
-        setError(message === "找不到这个任务。" ? "处理中断了，请再扒一次。" : message);
+        setError(message);
         setJob((current) =>
           current && current.id === jobId
             ? { ...current, stage: "error", error: message, message: "失败" }
@@ -73,7 +91,7 @@ export function KeyprintApp() {
   }, [job]);
 
   useEffect(() => {
-    if (!job || job.stage !== "done" || job.id === "demo") return;
+    if (!job || job.stage !== "done") return;
     let cancelled = false;
     getMusicXml(job.id)
       .then((xml) => {
@@ -114,7 +132,7 @@ export function KeyprintApp() {
     setSubmitting(true);
     setProgress(4);
     try {
-      const created = await createJob(file ?? undefined, file ? undefined : url.trim(), instrumentId);
+      const created = await createJob(file ?? undefined, file ? undefined : url.trim(), targetId, sourceId);
       setJob(created);
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败");
@@ -136,25 +154,9 @@ export function KeyprintApp() {
     setRescoring(false);
   }
 
-  async function changeInstrument(nextId: string) {
+  async function changeTarget(nextId: string) {
     if (!job || job.stage !== "done" || nextId === job.instrument || rescoring) return;
-    setInstrumentId(nextId);
-    if (job.id === "demo") {
-      setError(null);
-      try {
-        const response = await fetch(
-          `${API_BASE}/demo/musicxml?instrument=${encodeURIComponent(nextId)}`,
-          { cache: "no-store" },
-        );
-        if (!response.ok) throw new Error("示例谱读不到");
-        const xml = await response.text();
-        setJob({ ...job, instrument: nextId });
-        setMusicXml(xml);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "示例谱读不到");
-      }
-      return;
-    }
+    setTargetId(nextId);
     setRescoring(true);
     setError(null);
     try {
@@ -163,51 +165,52 @@ export function KeyprintApp() {
       setJob(updated);
       setMusicXml(xml);
     } catch (err) {
-      setInstrumentId(job.instrument);
+      setTargetId(job.instrument);
       setError(err instanceof Error ? err.message : "换乐器失败");
     } finally {
       setRescoring(false);
     }
   }
 
-  const actionLabel = useMemo(() => {
-    if (error) return "再试一次";
-    return "扒一下";
-  }, [error]);
+  const routeLabel = useMemo(() => {
+    const from = nameOf(job?.source_instrument || sourceId, instruments);
+    const to = nameOf(job?.instrument || targetId, instruments);
+    return `${from} → ${to}`;
+  }, [instruments, job, sourceId, targetId]);
 
   if (musicXml && job?.stage === "done") {
     return (
       <div className="result-shell">
         <div className="result-bar">
           <div>
-            <p className="result-bar__brand">有谱了</p>
+            <p className="result-bar__brand">移调</p>
             <p className="result-bar__note">
-              {keyLabelForInstrument(job.instrument || instrumentId)}
+              {routeLabel}
               {rescoring ? " · 正在换谱" : ""}
             </p>
           </div>
           <div className="result-bar__actions">
-            <InstrumentPicker
-              value={job.instrument || instrumentId}
-              disabled={rescoring}
-              onChange={changeInstrument}
-            />
-            {job.id !== "demo" ? (
-              <>
-                <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
-                  <DownloadSimple className="size-4" />
-                  MIDI
-                </a>
-                <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
-                  <DownloadSimple className="size-4" />
-                  MusicXML
-                </a>
-              </>
-            ) : null}
+            <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
+              <DownloadSimple className="size-4" />
+              MIDI
+            </a>
+            <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
+              <DownloadSimple className="size-4" />
+              MusicXML
+            </a>
             <button type="button" className="text-button" onClick={reset}>
               再来一次
             </button>
           </div>
+        </div>
+        <div className="result-rescore">
+          <InstrumentSelect
+            label="写成"
+            value={job.instrument || targetId}
+            items={instruments}
+            disabled={rescoring}
+            onChange={changeTarget}
+          />
         </div>
         {error ? (
           <p className="error-message result-error" role="alert">
@@ -221,12 +224,11 @@ export function KeyprintApp() {
 
   return (
     <div className="app-frame">
-      <SpiderSolitaire />
       <main className="work-panel">
         <header className="panel-heading">
-          <h1>有谱了</h1>
+          <h1>移调</h1>
         </header>
-        <p className="lede">上传钢琴独奏，扒成大谱表草稿。</p>
+        <p className="lede">把一份谱从一件乐器写成另一件。MIDI 按原乐器的记谱音高理解；音频先按实音识别，再写成目标乐器谱。</p>
 
         <form
           className="work-form"
@@ -281,8 +283,8 @@ export function KeyprintApp() {
               </span>
             ) : (
               <span className="drop-well__copy">
-                <span className="drop-well__title">{dragging ? "松开放入" : "把视频或音频放进来"}</span>
-                <span className="drop-well__hint">MP4 / MOV / WAV / MP3，最长 3 分钟</span>
+                <span className="drop-well__title">{dragging ? "松开放入" : "放入 MIDI、音频或视频"}</span>
+                <span className="drop-well__hint">MID / MP3 / WAV / MP4，最长 3 分钟</span>
               </span>
             )}
           </button>
@@ -302,17 +304,10 @@ export function KeyprintApp() {
             />
           </label>
 
-          <InstrumentPicker
-            value={instrumentId}
-            disabled={busy}
-            onChange={setInstrumentId}
-          />
+          <InstrumentSelect label="原来是" value={sourceId} items={instruments} disabled={busy} onChange={setSourceId} />
+          <InstrumentSelect label="写成" value={targetId} items={instruments} disabled={busy} onChange={setTargetId} />
 
-          <button
-            type="submit"
-            className={`action-button ${busy ? "processing" : ""}`}
-            disabled={!canSubmit}
-          >
+          <button type="submit" className={`action-button ${busy ? "processing" : ""}`} disabled={!canSubmit}>
             <span
               className="action-button__fill"
               style={{ transform: `scaleX(${busy ? Math.min(progress, 100) / 100 : 0})` }}
@@ -329,10 +324,12 @@ export function KeyprintApp() {
                   <span className="sr-only">{job?.message || "处理中"}</span>
                 </>
               ) : (
-                actionLabel
+                "写成谱"
               )}
             </span>
           </button>
+
+          {sourceId === targetId ? <p className="privacy-note">请选两件不同的乐器。</p> : null}
 
           {error ? (
             <p className="error-message" role="alert">
