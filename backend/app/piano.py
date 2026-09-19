@@ -235,7 +235,17 @@ def prepare_piano(midi_path, bpm: float | None = None) -> tuple[list[PianoEvent]
     return to_events(notes, tempo), tempo
 
 
-def quantize_voice(notes: list[PianoNote], bpm: float) -> list[PianoEvent]:
+def pick_melody(pitches: list[int], low: int | None = None, high: int | None = None) -> int:
+    unique = sorted(set(pitches))
+    if not unique:
+        raise ValueError("没有音可写。")
+    if low is None or high is None:
+        return unique[-1]
+    in_range = [value for value in unique if low <= value <= high]
+    return (in_range or unique)[-1]
+
+
+def quantize_voice(notes: list[PianoNote], bpm: float, low: int | None = None, high: int | None = None) -> list[PianoEvent]:
     voiced = [
         PianoNote(
             midi=item.midi,
@@ -259,8 +269,9 @@ def quantize_voice(notes: list[PianoNote], bpm: float) -> list[PianoEvent]:
             if item.midi not in event.pitches:
                 event.pitches.append(item.midi)
             event.duration = max(event.duration, duration)
-    events = list(buckets.values())
-    for event in events:
-        event.pitches.sort()
+    events = []
+    for event in buckets.values():
+        event.pitches = [pick_melody(event.pitches, low, high)]
+        events.append(event)
     events.sort(key=lambda item: item.onset)
     return events

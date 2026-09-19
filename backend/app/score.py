@@ -11,7 +11,6 @@ from .instruments import (
     DEFAULT_INSTRUMENT,
     InstrumentSpec,
     get_instrument,
-    music21_clef,
     music21_instrument,
 )
 from .piano import estimate_bpm, load_notes, prepare_piano, quantize_voice
@@ -92,10 +91,10 @@ def midi_to_musicxml(
     else:
         notes = load_notes(midi_path)
         bpm = estimate_bpm(notes)
-        events = quantize_voice(notes, bpm)
+        events = quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high)
         detected_key = detect_key([pitch for event in events for pitch in event.pitches])
         score = _single_staff_from_events(events, detected_key, bpm, title, spec)
-        note_count = sum(len(event.pitches) for event in events)
+        note_count = len(events)
 
     try:
         score.makeMeasures(inPlace=True)
@@ -160,12 +159,11 @@ def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
     return score
 
 
-def _written_event_pitches(event, spec: InstrumentSpec) -> list:
-    written = []
-    for value in event.pitches:
-        folded = _fold_midi(value, spec.sounding_low, spec.sounding_high)
-        written.append(pitch.Pitch(midi=folded + spec.write_semitones))
-    return written
+def _written_melody_pitch(event, spec: InstrumentSpec) -> pitch.Pitch | None:
+    if not event.pitches:
+        return None
+    folded = _fold_midi(event.pitches[0], spec.sounding_low, spec.sounding_high)
+    return pitch.Pitch(midi=folded + spec.write_semitones)
 
 
 def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec: InstrumentSpec) -> stream.Score:
@@ -175,16 +173,13 @@ def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec
     part.insert(0, copy.deepcopy(_written_key(detected_key, spec)))
     part.insert(0, meter.TimeSignature("4/4"))
     part.insert(0, tempo.MetronomeMark(number=bpm))
-    part.insert(0, music21_clef(spec))
+    part.insert(0, clef.TrebleClef())
 
     for event in events:
-        written = _written_event_pitches(event, spec)
-        if not written:
+        written = _written_melody_pitch(event, spec)
+        if written is None:
             continue
-        if len(written) == 1:
-            placed = note.Note(written[0])
-        else:
-            placed = chord.Chord(written)
+        placed = note.Note(written)
         placed.quarterLength = event.duration
         part.insert(event.onset, placed)
 
@@ -236,7 +231,7 @@ def demo_scale_musicxml(instrument_id: str = DEFAULT_INSTRUMENT) -> str:
         part.insert(0, written_key)
         part.insert(0, meter.TimeSignature("4/4"))
         part.insert(0, tempo.MetronomeMark(number=96))
-        part.insert(0, music21_clef(spec))
+        part.insert(0, clef.TrebleClef())
         concert = [60, 62, 64, 65, 67, 69, 71, 72]
         for index, midi_number in enumerate(concert):
             folded = _fold_midi(midi_number, spec.sounding_low, spec.sounding_high)

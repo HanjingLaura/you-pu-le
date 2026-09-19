@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pretty_midi
-from music21 import converter, note
+from music21 import chord, clef, converter, note
 
 from app.midi_io import to_concert_midi, to_written_midi
 from app.score import detect_key, midi_to_musicxml
@@ -100,3 +100,64 @@ def test_detect_key_prefers_major_for_c_scale():
     key = detect_key([60, 62, 64, 65, 67, 69, 71, 72])
     assert key.tonic.midi % 12 == 0
     assert key.mode == "major"
+
+
+def _write_simultaneous(path: Path, pitches: list[int], bpm: float = 80) -> Path:
+    midi = pretty_midi.PrettyMIDI(initial_tempo=bpm)
+    inst = pretty_midi.Instrument(program=0)
+    for pitch in pitches:
+        inst.notes.append(pretty_midi.Note(velocity=90, pitch=pitch, start=0.0, end=0.5))
+    midi.instruments.append(inst)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    midi.write(str(path))
+    return path
+
+
+def test_non_piano_drops_chords_and_keeps_melody(tmp_path: Path):
+    midi_path = _write_simultaneous(tmp_path / "chord.mid", [48, 64, 67])
+    xml_path = tmp_path / "flute.musicxml"
+    result = midi_to_musicxml(midi_path, xml_path, "单音", "flute")
+    score = converter.parse(str(xml_path))
+    assert len(list(score.parts)) == 1
+    assert any(isinstance(item, clef.TrebleClef) for item in score.parts[0].flatten().getElementsByClass(clef.Clef))
+    assert not any(isinstance(item, chord.Chord) for item in score.parts[0].flatten().notes)
+    assert _part_pitches(xml_path) == [67]
+    assert result["note_count"] == 1
+
+
+def test_cello_uses_treble_clef(tmp_path: Path):
+    midi_path = _write_midi(tmp_path / "cello.mid", [48, 50, 52])
+    xml_path = tmp_path / "cello.musicxml"
+    midi_to_musicxml(midi_path, xml_path, "大提琴", "cello")
+    score = converter.parse(str(xml_path))
+    clefs = list(score.parts[0].flatten().getElementsByClass(clef.Clef))
+    assert clefs
+    assert all(isinstance(item, clef.TrebleClef) for item in clefs)
+
+
+def test_piano_keeps_grand_staff_and_both_hands(tmp_path: Path):
+    events = []
+    for index, (low, high) in enumerate(zip([48, 50, 52, 53], [64, 65, 67, 69])):
+        start = index * 0.5
+        events.append((low, start, 0.4))
+        events.append((high, start, 0.4))
+    midi = pretty_midi.PrettyMIDI(initial_tempo=120)
+    inst = pretty_midi.Instrument(program=0)
+    for pitch, start, duration in events:
+        inst.notes.append(pretty_midi.Note(velocity=90, pitch=pitch, start=start, end=start + duration))
+    midi.instruments.append(inst)
+    midi_path = tmp_path / "piano.mid"
+    midi.write(str(midi_path))
+    xml_path = tmp_path / "piano.musicxml"
+    midi_to_musicxml(midi_path, xml_path, "钢琴")
+    score = converter.parse(str(xml_path))
+    parts = list(score.parts)
+    assert len(parts) == 2
+    right_clefs = list(parts[0].flatten().getElementsByClass(clef.Clef))
+    left_clefs = list(parts[1].flatten().getElementsByClass(clef.Clef))
+    assert any(isinstance(item, clef.TrebleClef) for item in right_clefs)
+    assert any(isinstance(item, clef.BassClef) for item in left_clefs)
+    right = [item.pitch.midi for item in parts[0].flatten().notes if isinstance(item, note.Note)]
+    left = [item.pitch.midi for item in parts[1].flatten().notes if isinstance(item, note.Note)]
+    assert set([64, 65, 67, 69]).issubset(set(right))
+    assert set([48, 50, 52, 53]).issubset(set(left))

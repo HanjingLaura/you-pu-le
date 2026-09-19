@@ -35,8 +35,8 @@ class InstrumentSpec:
 
 INSTRUMENTS: tuple[InstrumentSpec, ...] = (
     InstrumentSpec("piano", "钢琴", "键盘", "C", "大谱表", 0, True, "grand", 21, 108, "双手，高音谱号 + 低音谱号，按实音记谱。"),
-    InstrumentSpec("flute", "长笛", "木管", "C", "高音谱号", 0, False, "treble", 60, 96, "C 调，按实音记谱。"),
-    InstrumentSpec("oboe", "双簧管", "木管", "C", "高音谱号", 0, False, "treble", 58, 91, "C 调，按实音记谱。"),
+    InstrumentSpec("flute", "长笛", "木管", "C", "高音谱号", 0, False, "treble", 60, 96, "C 调，单声部，高音谱号，按实音记谱。"),
+    InstrumentSpec("oboe", "双簧管", "木管", "C", "高音谱号", 0, False, "treble", 58, 91, "C 调，单声部，高音谱号，按实音记谱。"),
     InstrumentSpec("clarinet_bb", "单簧管", "木管", "降B", "高音谱号 · 移调", 2, False, "treble", 50, 86, "降B 调。写成比实音高一个大二度。"),
     InstrumentSpec("soprano_sax", "高音萨克斯", "木管", "降B", "高音谱号 · 移调", 2, False, "treble", 56, 87, "降B 调。写成比实音高一个大二度。"),
     InstrumentSpec("alto_sax", "中音萨克斯", "木管", "降E", "高音谱号 · 移调", 9, False, "treble", 49, 81, "降E 调。写成比实音高一个大六度。"),
@@ -44,12 +44,12 @@ INSTRUMENTS: tuple[InstrumentSpec, ...] = (
     InstrumentSpec("bari_sax", "上低音萨克斯", "木管", "降E", "高音谱号 · 移调", 21, False, "treble", 36, 69, "降E 调。写成比实音高一个八度加一个大六度。"),
     InstrumentSpec("trumpet_bb", "小号", "铜管", "降B", "高音谱号 · 移调", 2, False, "treble", 54, 86, "降B 调。写成比实音高一个大二度。"),
     InstrumentSpec("horn_f", "圆号", "铜管", "F", "高音谱号 · 移调", 7, False, "treble", 41, 77, "F 调。写成比实音高一个纯五度。"),
-    InstrumentSpec("trombone", "长号", "铜管", "C", "低音谱号", 0, False, "bass", 40, 72, "C 调，按实音记谱。"),
-    InstrumentSpec("tuba", "大号", "铜管", "C", "低音谱号", 0, False, "bass", 28, 58, "C 调，按实音记谱。"),
-    InstrumentSpec("violin", "小提琴", "弦乐", "C", "高音谱号", 0, False, "treble", 55, 96, "C 调，按实音记谱。"),
-    InstrumentSpec("viola", "中提琴", "弦乐", "C", "中音谱号", 0, False, "alto", 48, 84, "C 调，按实音记谱。"),
-    InstrumentSpec("cello", "大提琴", "弦乐", "C", "低音谱号", 0, False, "bass", 36, 76, "C 调，按实音记谱。"),
-    InstrumentSpec("guitar", "吉他", "弦乐", "C", "高音谱号 8va", 12, False, "treble8vb", 40, 76, "C 调。高音谱号，写成比实音高一个八度。"),
+    InstrumentSpec("trombone", "长号", "铜管", "C", "高音谱号", 0, False, "treble", 40, 72, "C 调，单声部，高音谱号，按实音记谱。"),
+    InstrumentSpec("tuba", "大号", "铜管", "C", "高音谱号", 0, False, "treble", 28, 58, "C 调，单声部，高音谱号，按实音记谱。"),
+    InstrumentSpec("violin", "小提琴", "弦乐", "C", "高音谱号", 0, False, "treble", 55, 96, "C 调，单声部，高音谱号，按实音记谱。"),
+    InstrumentSpec("viola", "中提琴", "弦乐", "C", "高音谱号", 0, False, "treble", 48, 84, "C 调，单声部，高音谱号，按实音记谱。"),
+    InstrumentSpec("cello", "大提琴", "弦乐", "C", "高音谱号", 0, False, "treble", 36, 76, "C 调，单声部，高音谱号，按实音记谱。"),
+    InstrumentSpec("guitar", "吉他", "弦乐", "C", "高音谱号", 12, False, "treble", 40, 76, "C 调，单声部，高音谱号，写成比实音高一个八度。"),
 )
 
 DEFAULT_INSTRUMENT = "piano"
@@ -92,11 +92,6 @@ def music21_instrument(spec: InstrumentSpec):
 
 
 def music21_clef(spec: InstrumentSpec):
-    mapping = {
-        "treble": clef.TrebleClef,
-        "bass": clef.BassClef,
-        "alto": clef.AltoClef,
-        "tenor": clef.TenorClef,
-        "treble8vb": clef.Treble8vbClef,
-    }
-    return mapping[spec.clef]()
+    if spec.grand:
+        return clef.TrebleClef()
+    return clef.TrebleClef()

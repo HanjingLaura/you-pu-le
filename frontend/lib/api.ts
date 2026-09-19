@@ -42,8 +42,8 @@ export type Job = {
 
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { id: "piano", name: "钢琴", group: "键盘", key_label: "C", staff_label: "大谱表", write_semitones: 0, grand: true, clef: "grand", hint: "双手，高音谱号 + 低音谱号，按实音记谱。" },
-  { id: "flute", name: "长笛", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，按实音记谱。" },
-  { id: "oboe", name: "双簧管", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，按实音记谱。" },
+  { id: "flute", name: "长笛", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "oboe", name: "双簧管", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
   { id: "clarinet_bb", name: "单簧管", group: "木管", key_label: "降B", staff_label: "高音谱号 · 移调", write_semitones: 2, grand: false, clef: "treble", hint: "降B 调。写成比实音高一个大二度。" },
   { id: "soprano_sax", name: "高音萨克斯", group: "木管", key_label: "降B", staff_label: "高音谱号 · 移调", write_semitones: 2, grand: false, clef: "treble", hint: "降B 调。写成比实音高一个大二度。" },
   { id: "alto_sax", name: "中音萨克斯", group: "木管", key_label: "降E", staff_label: "高音谱号 · 移调", write_semitones: 9, grand: false, clef: "treble", hint: "降E 调。写成比实音高一个大六度。" },
@@ -51,12 +51,12 @@ export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { id: "bari_sax", name: "上低音萨克斯", group: "木管", key_label: "降E", staff_label: "高音谱号 · 移调", write_semitones: 21, grand: false, clef: "treble", hint: "降E 调。写成比实音高一个八度加一个大六度。" },
   { id: "trumpet_bb", name: "小号", group: "铜管", key_label: "降B", staff_label: "高音谱号 · 移调", write_semitones: 2, grand: false, clef: "treble", hint: "降B 调。写成比实音高一个大二度。" },
   { id: "horn_f", name: "圆号", group: "铜管", key_label: "F", staff_label: "高音谱号 · 移调", write_semitones: 7, grand: false, clef: "treble", hint: "F 调。写成比实音高一个纯五度。" },
-  { id: "trombone", name: "长号", group: "铜管", key_label: "C", staff_label: "低音谱号", write_semitones: 0, grand: false, clef: "bass", hint: "C 调，按实音记谱。" },
-  { id: "tuba", name: "大号", group: "铜管", key_label: "C", staff_label: "低音谱号", write_semitones: 0, grand: false, clef: "bass", hint: "C 调，按实音记谱。" },
-  { id: "violin", name: "小提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，按实音记谱。" },
-  { id: "viola", name: "中提琴", group: "弦乐", key_label: "C", staff_label: "中音谱号", write_semitones: 0, grand: false, clef: "alto", hint: "C 调，按实音记谱。" },
-  { id: "cello", name: "大提琴", group: "弦乐", key_label: "C", staff_label: "低音谱号", write_semitones: 0, grand: false, clef: "bass", hint: "C 调，按实音记谱。" },
-  { id: "guitar", name: "吉他", group: "弦乐", key_label: "C", staff_label: "高音谱号 8va", write_semitones: 12, grand: false, clef: "treble8vb", hint: "C 调。高音谱号，写成比实音高一个八度。" },
+  { id: "trombone", name: "长号", group: "铜管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "tuba", name: "大号", group: "铜管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "violin", name: "小提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "viola", name: "中提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "cello", name: "大提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "guitar", name: "吉他", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 12, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，写成比实音高一个八度。" },
 ];
 
 export const DEFAULT_INSTRUMENT = "piano";
