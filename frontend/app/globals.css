@@ -367,21 +367,19 @@ a:focus-visible {
 }
 
 .result-shell {
-  width: min(1100px, calc(100% - 32px));
+  width: min(1100px, calc(100% - 24px));
   margin: 0 auto;
   min-height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));
   display: grid;
   grid-template-rows: auto 1fr;
-  padding: 48px 0 40px;
+  padding: 44px 0 24px;
   background: var(--paper);
 }
 
 .result-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .result-bar__brand {
@@ -389,18 +387,13 @@ a:focus-visible {
   font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.03em;
+  white-space: nowrap;
 }
 
 .result-bar__note {
   margin: 2px 0 0;
   font-size: 11px;
   color: var(--muted);
-}
-
-.result-bar__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 .result-error {
@@ -410,10 +403,10 @@ a:focus-visible {
 .key-picker {
   display: flex;
   justify-content: center;
-  align-items: flex-end;
+  align-items: center;
   gap: 4px;
-  min-height: 52px;
-  padding-top: 28px;
+  min-height: 36px;
+  padding-top: 0;
 }
 
 .key-chip {
@@ -477,10 +470,20 @@ a:focus-visible {
   line-height: 1;
 }
 
+.result-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
 .result-bar__actions .key-picker {
+  flex: 1 1 100%;
+  justify-content: center;
   min-height: 36px;
-  padding-top: 28px;
-  margin-right: 4px;
+  padding-top: 0;
+  margin-right: 0;
 }
 
 .text-button {
@@ -529,7 +532,8 @@ a:focus-visible {
   border-radius: 14px;
   background: #ffffff;
   color: #151515;
-  min-height: 520px;
+  min-height: 240px;
+  padding: 8px 4px 16px;
 }
 
 .score-paper svg {
@@ -905,6 +909,33 @@ a:focus-visible {
 
 .result-rescore {
   margin: 0 0 16px;
+}
+
+@media (hover: none) {
+  .key-chip__float {
+    display: none;
+  }
+}
+
+@media (min-width: 720px) {
+  .result-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .result-bar__actions {
+    justify-content: flex-end;
+  }
+
+  .result-bar__actions .key-picker {
+    flex: 0 0 auto;
+  }
+
+  .score-paper {
+    min-height: 480px;
+    padding: 16px 20px 24px;
+  }
 }
 
 @media (max-width: 640px) {

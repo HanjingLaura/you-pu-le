@@ -6,7 +6,7 @@ import pretty_midi
 from music21 import chord, clef, converter, note
 
 from app.midi_io import to_concert_midi, to_written_midi
-from app.score import detect_key, midi_to_musicxml
+from app.score import detect_key, display_title, midi_to_musicxml
 
 
 def _write_midi(path: Path, pitches: list[int], bpm: float = 80) -> Path:
@@ -133,6 +133,34 @@ def test_cello_uses_treble_clef(tmp_path: Path):
     clefs = list(score.parts[0].flatten().getElementsByClass(clef.Clef))
     assert clefs
     assert all(isinstance(item, clef.TrebleClef) for item in clefs)
+
+
+def test_ugly_filename_becomes_draft_title():
+    assert display_title("v0200fg10000dagm2ifog65lchoooj3g.mp4") == "草稿谱"
+    assert display_title("小星星") == "小星星"
+
+
+def test_monophonic_line_has_no_overlapping_notes(tmp_path: Path):
+    midi = pretty_midi.PrettyMIDI(initial_tempo=120)
+    inst = pretty_midi.Instrument(program=0)
+    for pitch, start, end in ((60, 0.0, 1.2), (64, 0.1, 0.8), (67, 0.15, 0.9), (72, 0.6, 1.4)):
+        inst.notes.append(pretty_midi.Note(velocity=90, pitch=pitch, start=start, end=end))
+    midi.instruments.append(inst)
+    midi_path = tmp_path / "overlap.mid"
+    midi.write(str(midi_path))
+    xml_path = tmp_path / "overlap.musicxml"
+    midi_to_musicxml(midi_path, xml_path, "v0200fg10000dagm2ifog65lchoooj3g", "soprano_sax")
+    xml = xml_path.read_text(encoding="utf-8")
+    assert "<work-title>草稿谱</work-title>" in xml
+    assert "v0200fg10000" not in xml
+    score = converter.parse(str(xml_path))
+    notes = [item for item in score.parts[0].flatten().notes]
+    assert notes
+    assert not any(isinstance(item, chord.Chord) for item in notes)
+    cursor = 0.0
+    for item in notes:
+        assert item.offset + 1e-6 >= cursor
+        cursor = item.offset + float(item.quarterLength)
 
 
 def test_piano_keeps_grand_staff_and_both_hands(tmp_path: Path):

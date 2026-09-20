@@ -22,12 +22,20 @@ export function ScoreViewer({ musicXml }: ScoreViewerProps) {
       const osmd = new OpenSheetMusicDisplay(ref.current, {
         backend: "svg",
         autoResize: true,
-        drawTitle: true,
-        drawComposer: true,
-        drawingParameters: "compact",
+        drawTitle: false,
+        drawSubtitle: false,
+        drawComposer: false,
+        drawLyricist: false,
+        drawCredits: false,
+        drawPartNames: false,
+        drawPartAbbreviations: false,
+        drawMeasureNumbers: false,
+        drawingParameters: "compacttight",
       });
       await osmd.load(musicXml);
-      if (cancelled) return;
+      if (cancelled || !ref.current) return;
+      const width = ref.current.clientWidth || 320;
+      osmd.zoom = width < 520 ? Math.max(0.55, width / 620) : 1;
       osmd.render();
     };
 
@@ -43,5 +51,5 @@ export function ScoreViewer({ musicXml }: ScoreViewerProps) {
     };
   }, [musicXml]);
 
-  return <div ref={ref} className="score-paper w-full px-5 py-8" />;
+  return <div ref={ref} className="score-paper" />;
 }

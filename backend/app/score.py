@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import re
 from pathlib import Path
 
 from music21 import chord, clef, instrument, key as keymod
@@ -19,6 +20,14 @@ log = logging.getLogger("keyprint")
 
 _MAJOR = (0, 2, 4, 5, 7, 9, 11)
 _MINOR = (0, 2, 3, 5, 7, 8, 10)
+_UGLY_TITLE = re.compile(r"(?:\d{5,}|[a-f0-9]{12,}|v\d{3,})", re.IGNORECASE)
+
+
+def display_title(title: str | None) -> str:
+    stem = Path(title or "").stem.strip()
+    if not stem or len(stem) > 18 or _UGLY_TITLE.search(stem):
+        return "草稿谱"
+    return stem
 
 
 def _fold_midi(value: int, low: int | None, high: int | None) -> int:
@@ -82,24 +91,20 @@ def midi_to_musicxml(
     instrument_id: str = DEFAULT_INSTRUMENT,
 ) -> dict:
     spec = get_instrument(instrument_id)
+    heading = display_title(title)
 
     if spec.grand:
         events, bpm = prepare_piano(midi_path)
         detected_key = detect_key([pitch for event in events for pitch in event.pitches])
-        score = _piano_score(events, detected_key, bpm, title)
+        score = _piano_score(events, detected_key, bpm, heading)
         note_count = sum(len(event.pitches) for event in events)
     else:
         notes = load_notes(midi_path)
         bpm = estimate_bpm(notes)
         events = quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high)
         detected_key = detect_key([pitch for event in events for pitch in event.pitches])
-        score = _single_staff_from_events(events, detected_key, bpm, title, spec)
+        score = _single_staff_from_events(events, detected_key, bpm, heading, spec)
         note_count = len(events)
-
-    try:
-        score.makeMeasures(inPlace=True)
-    except Exception as exc:
-        log.warning("makeNotation skipped: %s", exc)
 
     xml_path.parent.mkdir(parents=True, exist_ok=True)
     score.write("musicxml", fp=str(xml_path))
@@ -129,34 +134,27 @@ def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
     right.insert(0, clef.TrebleClef())
     left.insert(0, clef.BassClef())
 
-    for event in events:
-        target = right if event.hand == "right" else left
-        pitches = [pitch.Pitch(midi=value) for value in event.pitches]
-        if not pitches:
-            continue
-        if len(pitches) == 1:
-            placed = note.Note(pitches[0])
-        else:
-            placed = chord.Chord(pitches)
-        placed.quarterLength = event.duration
-        target.insert(event.onset, placed)
-
-    for part in (right, left):
-        try:
-            part.makeRests(fillGaps=True, inPlace=True)
-            part.makeBeams(inPlace=True)
-            part.makeAccidentals(inPlace=True)
-        except Exception as exc:
-            log.warning("piano notation cleanup skipped: %s", exc)
+    right_events = [event for event in events if event.hand == "right"]
+    left_events = [event for event in events if event.hand == "left"]
+    _write_events(right, right_events, _piano_element)
+    _write_events(left, left_events, _piano_element)
+    _finish_part(right)
+    _finish_part(left)
 
     score = stream.Score()
     score.insert(0, metadata.Metadata())
     score.metadata.title = title or "草稿谱"
-    score.metadata.composer = "有谱了 草稿谱 · 钢琴"
     score.insert(0, right)
     score.insert(0, left)
     score.insert(0, layout.StaffGroup([right, left], name="Piano", symbol="brace"))
     return score
+
+
+def _piano_element(event) -> note.NotRest:
+    pitches = [pitch.Pitch(midi=value) for value in event.pitches]
+    if len(pitches) == 1:
+        return note.Note(pitches[0])
+    return chord.Chord(pitches)
 
 
 def _written_melody_pitch(event, spec: InstrumentSpec) -> pitch.Pitch | None:
@@ -175,25 +173,54 @@ def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec
     part.insert(0, tempo.MetronomeMark(number=bpm))
     part.insert(0, clef.TrebleClef())
 
-    for event in events:
+    def melody_element(event):
         written = _written_melody_pitch(event, spec)
         if written is None:
-            continue
-        placed = note.Note(written)
-        placed.quarterLength = event.duration
-        part.insert(event.onset, placed)
+            return note.Rest()
+        return note.Note(written)
 
-    try:
-        part.makeRests(fillGaps=True, inPlace=True)
-    except Exception as exc:
-        log.warning("makeRests skipped: %s", exc)
+    _write_events(part, events, melody_element)
+    _finish_part(part)
 
     score = stream.Score()
     score.insert(0, metadata.Metadata())
     score.metadata.title = title or "草稿谱"
-    score.metadata.composer = f"有谱了 草稿谱 · {spec.name}（{spec.key_label}）"
     score.insert(0, part)
     return score
+
+
+def _write_events(part, events, element_for) -> None:
+    cursor = 0.0
+    for event in events:
+        if event.onset < cursor - 0.001:
+            continue
+        if event.onset > cursor + 0.001:
+            rest = note.Rest()
+            rest.quarterLength = event.onset - cursor
+            part.append(rest)
+            cursor = event.onset
+        placed = element_for(event)
+        if isinstance(placed, note.Rest):
+            continue
+        placed.quarterLength = max(0.25, event.duration)
+        part.append(placed)
+        cursor = event.onset + placed.quarterLength
+
+
+def _finish_part(part) -> None:
+    try:
+        part.makeMeasures(inPlace=True)
+    except Exception as exc:
+        log.warning("makeMeasures skipped: %s", exc)
+        return
+    try:
+        part.makeBeams(inPlace=True)
+    except Exception as exc:
+        log.warning("makeBeams skipped: %s", exc)
+    try:
+        part.makeAccidentals(inPlace=True)
+    except Exception as exc:
+        log.warning("makeAccidentals skipped: %s", exc)
 
 
 def demo_scale_musicxml(instrument_id: str = DEFAULT_INSTRUMENT) -> str:

@@ -186,24 +186,61 @@ def _clip_durations(notes: list[PianoNote]) -> None:
 
 
 def _snap(value: float) -> float:
-    grids = (0.0625, 1 / 12, 0.125, 1 / 6, 0.25, 1 / 3, 0.5, 0.75, 1.0, 1.5, 2.0)
-    best = 0.0
-    best_err = None
-    for step in grids:
-        snapped = round(value / step) * step
-        err = abs(value - snapped)
-        if best_err is None or err < best_err - 1e-9 or (abs(err - best_err) < 1e-9 and step >= 0.125):
-            best_err = err
-            best = snapped
-    return max(0.0, round(best * 48) / 48)
+    return max(0.0, round(value * 4) / 4)
 
 
 def _snap_duration(value: float) -> float:
-    for simple in (0.25, 0.5, 1.0, 1.5, 2.0):
-        if abs(value - simple) <= 0.2:
-            return simple
-    snapped = _snap(value)
-    return max(0.0625, snapped)
+    if value < 0.375:
+        return 0.25
+    if value < 0.75:
+        return 0.5
+    if value < 1.25:
+        return 1.0
+    if value < 1.75:
+        return 1.5
+    return 2.0
+
+
+def clip_events(events: list[PianoEvent], monophonic: bool = False) -> list[PianoEvent]:
+    grouped: dict[str, list[PianoEvent]] = {}
+    for event in events:
+        grouped.setdefault(event.hand, []).append(event)
+    cleaned: list[PianoEvent] = []
+    for group in grouped.values():
+        group.sort(key=lambda item: item.onset)
+        line: list[PianoEvent] = []
+        for event in group:
+            if event.duration <= 0 or not event.pitches:
+                continue
+            if line and event.onset <= line[-1].onset + (0.2 if monophonic else 1e-6):
+                previous = line[-1]
+                if monophonic:
+                    previous.pitches = [pick_melody(previous.pitches + event.pitches)]
+                else:
+                    previous.pitches = sorted(set(previous.pitches + event.pitches))
+                previous.duration = max(previous.duration, event.duration, event.onset + event.duration - previous.onset)
+                continue
+            line.append(
+                PianoEvent(
+                    onset=event.onset,
+                    duration=event.duration,
+                    pitches=list(event.pitches),
+                    hand=event.hand,
+                )
+            )
+        for index, event in enumerate(line):
+            if index + 1 < len(line):
+                event.duration = min(event.duration, line[index + 1].onset - event.onset)
+            event.duration = _snap_duration(max(event.duration, 0.25))
+            if index + 1 < len(line):
+                event.duration = min(event.duration, line[index + 1].onset - event.onset)
+            if event.duration < 0.25:
+                continue
+            if monophonic:
+                event.pitches = [pick_melody(event.pitches)]
+            cleaned.append(event)
+    cleaned.sort(key=lambda item: (item.onset, 0 if item.hand == "right" else 1))
+    return cleaned
 
 
 def to_events(notes: list[PianoNote], bpm: float) -> list[PianoEvent]:
@@ -225,8 +262,7 @@ def to_events(notes: list[PianoNote], bpm: float) -> list[PianoEvent]:
     events = list(buckets.values())
     for event in events:
         event.pitches.sort()
-    events.sort(key=lambda item: (item.onset, 0 if item.hand == "right" else 1))
-    return events
+    return clip_events(events)
 
 
 def prepare_piano(midi_path, bpm: float | None = None) -> tuple[list[PianoEvent], float]:
@@ -273,5 +309,4 @@ def quantize_voice(notes: list[PianoNote], bpm: float, low: int | None = None, h
     for event in buckets.values():
         event.pitches = [pick_melody(event.pitches, low, high)]
         events.append(event)
-    events.sort(key=lambda item: item.onset)
-    return events
+    return clip_events(events, monophonic=True)
