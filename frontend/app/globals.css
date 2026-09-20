@@ -409,9 +409,11 @@ a:focus-visible {
 }
 
 .key-select__row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  justify-items: center;
+  width: min(360px, 100%);
+  margin: 0 auto;
   gap: 0;
 }
 
