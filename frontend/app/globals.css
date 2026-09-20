@@ -403,6 +403,23 @@ a:focus-visible {
   margin: 0 0 12px;
 }
 
+.key-select {
+  display: grid;
+  gap: 8px;
+}
+
+.key-select__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0;
+}
+
+.key-select .key-chip {
+  min-width: 32px;
+  padding: 0 7px;
+}
+
 .key-picker {
   display: flex;
   justify-content: center;
@@ -504,6 +521,10 @@ a:focus-visible {
 .result-bar .key-picker {
   width: 100%;
   justify-content: space-evenly;
+}
+
+.result-bar .key-select {
+  width: 100%;
 }
 
 .text-button {
@@ -986,7 +1007,8 @@ a:focus-visible {
     justify-content: space-between;
   }
 
-  .result-bar .key-picker {
+  .result-bar .key-picker,
+  .result-bar .key-select {
     width: auto;
     justify-content: flex-start;
   }

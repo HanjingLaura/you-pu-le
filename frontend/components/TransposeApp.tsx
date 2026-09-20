@@ -1,33 +1,21 @@
 "use client";
 
 import { DownloadSimple } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   API_BASE,
-  DEFAULT_INSTRUMENT,
-  FALLBACK_INSTRUMENTS,
-  createJob,
-  getJob,
   getMusicXml,
-  listInstruments,
-  rescoreJob,
-  type Instrument,
-  type Job,
+  inspectScoreKey,
+  retranposeJob,
+  transposeScore,
+  type TransposeJob,
 } from "@/lib/api";
+import { DEFAULT_FROM_KEY, DEFAULT_TO_KEY } from "@/lib/keys";
 import { DotMatrixLoader } from "./DotMatrixLoader";
-import { InstrumentSelect } from "./InstrumentSelect";
+import { KeySelect } from "./KeySelect";
 import { ScoreViewer } from "./ScoreViewer";
 
-const ACCEPT = ".mp4,.mov,.webm,.mkv,.wav,.mp3,.m4a,.flac,.ogg,.mid,.midi";
-
-const STAGE_PROGRESS: Record<string, number> = {
-  queued: 6,
-  downloading: 18,
-  extracting: 32,
-  transcribing: 62,
-  scoring: 88,
-  done: 100,
-};
+const ACCEPT = ".musicxml,.xml,.mxl,.mid,.midi";
 
 function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -36,103 +24,40 @@ function formatSize(bytes: number) {
 export function TransposeApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [url, setUrl] = useState("");
   const [dragging, setDragging] = useState(false);
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<TransposeJob | null>(null);
   const [musicXml, setMusicXml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [rescoring, setRescoring] = useState(false);
-  const [sourceId, setSourceId] = useState(DEFAULT_INSTRUMENT);
-  const [targetId, setTargetId] = useState("alto_sax");
-  const [instruments, setInstruments] = useState<Instrument[]>(FALLBACK_INSTRUMENTS);
+  const [fromKey, setFromKey] = useState(DEFAULT_FROM_KEY);
+  const [toKey, setToKey] = useState(DEFAULT_TO_KEY);
 
-  useEffect(() => {
-    let cancelled = false;
-    listInstruments().then((items) => {
-      if (!cancelled && items.length) setInstruments(items);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const busy = submitting || Boolean(job && job.stage !== "done" && job.stage !== "error");
-  const canSubmit = Boolean(file || url.trim()) && !busy && sourceId !== targetId;
-  const progressLabel = Math.min(99, Math.max(0, Math.round(progress)));
-
-  useEffect(() => {
-    if (!job || job.stage === "done" || job.stage === "error") return;
-    const jobId = job.id;
-    const timer = window.setInterval(async () => {
-      try {
-        const next = await getJob(jobId);
-        setJob(next);
-        setProgress((current) => Math.max(current, STAGE_PROGRESS[next.stage] ?? current));
-        if (next.stage === "error") {
-          setError(next.error || "移调失败");
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "无法读取任务状态";
-        setError(message);
-        setJob((current) =>
-          current && current.id === jobId
-            ? { ...current, stage: "error", error: message, message: "失败" }
-            : current,
-        );
-      }
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [job]);
-
-  useEffect(() => {
-    if (!job || job.stage !== "done") return;
-    let cancelled = false;
-    getMusicXml(job.id)
-      .then((xml) => {
-        if (!cancelled) {
-          setMusicXml(xml);
-          setProgress(100);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "读不到 MusicXML");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [job]);
-
-  useEffect(() => {
-    if (!busy) return;
-    const timer = window.setInterval(() => {
-      setProgress((current) => Math.min(92, current + Math.max(1, Math.ceil((92 - current) * 0.08))));
-    }, 900);
-    return () => window.clearInterval(timer);
-  }, [busy]);
+  const busy = submitting;
+  const canSubmit = Boolean(file) && !busy;
 
   function chooseFile(next?: File) {
     if (!next || busy) return;
     setError(null);
     setFile(next);
-    setUrl("");
     setJob(null);
     setMusicXml(null);
+    void inspectScoreKey(next).then((key) => {
+      if (key) setFromKey(key);
+    });
   }
 
   async function submit() {
-    if (!canSubmit) return;
+    if (!file || !canSubmit) return;
     setError(null);
     setMusicXml(null);
     setSubmitting(true);
-    setProgress(4);
     try {
-      const created = await createJob(file ?? undefined, file ? undefined : url.trim(), targetId, sourceId);
+      const created = await transposeScore(file, fromKey, toKey);
+      const xml = await getMusicXml(created.id);
       setJob(created);
+      setMusicXml(xml);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "提交失败");
-      setProgress(0);
+      setError(err instanceof Error ? err.message : "移调失败");
       setJob(null);
     } finally {
       setSubmitting(false);
@@ -141,30 +66,27 @@ export function TransposeApp() {
 
   function reset() {
     setFile(null);
-    setUrl("");
     setJob(null);
     setMusicXml(null);
     setError(null);
-    setProgress(0);
     setSubmitting(false);
-    setRescoring(false);
   }
 
   async function changeTarget(nextId: string) {
-    if (!job || job.stage !== "done" || nextId === job.instrument || rescoring) return;
-    setTargetId(nextId);
-    setRescoring(true);
+    if (!job || job.stage !== "done" || nextId === (job.to_key || toKey) || submitting) return;
+    setToKey(nextId);
+    setSubmitting(true);
     setError(null);
     try {
-      const updated = await rescoreJob(job.id, nextId);
+      const updated = await retranposeJob(job.id, nextId);
       const xml = await getMusicXml(updated.id);
       setJob(updated);
       setMusicXml(xml);
     } catch (err) {
-      setTargetId(job.instrument);
-      setError(err instanceof Error ? err.message : "换乐器失败");
+      setToKey(job.to_key || toKey);
+      setError(err instanceof Error ? err.message : "移调失败");
     } finally {
-      setRescoring(false);
+      setSubmitting(false);
     }
   }
 
@@ -172,6 +94,7 @@ export function TransposeApp() {
     return (
       <div className="result-shell">
         <div className="result-bar">
+          <KeySelect label="移到" value={job.to_key || toKey} disabled={submitting} onChange={changeTarget} />
           <div className="result-bar__actions">
             <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
               <DownloadSimple className="size-4" />
@@ -185,15 +108,6 @@ export function TransposeApp() {
               再来一次
             </button>
           </div>
-        </div>
-        <div className="result-rescore">
-          <InstrumentSelect
-            label="写成"
-            value={job.instrument || targetId}
-            items={instruments}
-            disabled={rescoring}
-            onChange={changeTarget}
-          />
         </div>
         {error ? (
           <p className="error-message result-error" role="alert">
@@ -216,7 +130,7 @@ export function TransposeApp() {
           className="work-form"
           onSubmit={(event) => {
             event.preventDefault();
-            submit();
+            void submit();
           }}
         >
           <input
@@ -233,7 +147,7 @@ export function TransposeApp() {
           <button
             type="button"
             className={`drop-well ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
-            aria-label="放入文件"
+            aria-label="上传谱子"
             disabled={busy}
             onClick={() => inputRef.current?.click()}
             onDragEnter={(event) => {
@@ -265,42 +179,18 @@ export function TransposeApp() {
             ) : null}
           </button>
 
-          <label className="link-field">
-            <input
-              value={url}
-              disabled={busy || Boolean(file)}
-              aria-label="链接"
-              onChange={(event) => {
-                setUrl(event.target.value);
-                setFile(null);
-                setError(null);
-                setJob(null);
-              }}
-              placeholder="链接"
-            />
-          </label>
-
-          <InstrumentSelect label="原来是" value={sourceId} items={instruments} disabled={busy} onChange={setSourceId} />
-          <InstrumentSelect label="写成" value={targetId} items={instruments} disabled={busy} onChange={setTargetId} />
+          <KeySelect label="原调" value={fromKey} disabled={busy} onChange={setFromKey} />
+          <KeySelect label="移到" value={toKey} disabled={busy} onChange={setToKey} />
 
           <button type="submit" className={`action-button ${busy ? "processing" : ""}`} disabled={!canSubmit}>
-            <span
-              className="action-button__fill"
-              style={{ transform: `scaleX(${busy ? Math.min(progress, 100) / 100 : 0})` }}
-              aria-hidden="true"
-            />
             <span className="action-button__label">
               {busy ? (
                 <>
                   <DotMatrixLoader size={20} className="action-button__loader" />
-                  <span className="action-button__percent">
-                    <span className="action-button__percent-num">{progressLabel}</span>
-                    <span className="action-button__percent-sign">%</span>
-                  </span>
-                  <span className="sr-only">{job?.message || "处理中"}</span>
+                  <span className="sr-only">正在移调</span>
                 </>
               ) : (
-                "写成谱"
+                "移一下"
               )}
             </span>
           </button>

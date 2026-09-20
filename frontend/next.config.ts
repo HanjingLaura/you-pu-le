@@ -27,6 +27,8 @@ const nextConfig: NextConfig = {
       { source: "/demo/:path*", destination: `${backend}/demo/:path*` },
       { source: "/jobs", destination: `${backend}/jobs` },
       { source: "/jobs/:path*", destination: `${backend}/jobs/:path*` },
+      { source: "/key-transpose", destination: `${backend}/key-transpose` },
+      { source: "/key-transpose/:path*", destination: `${backend}/key-transpose/:path*` },
     ];
   },
 };

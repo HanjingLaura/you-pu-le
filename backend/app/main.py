@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import tempfile
 import threading
 from pathlib import Path
 
@@ -13,13 +14,14 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from .audio import AudioError, extract_wav
 from .download import download_source, validate_url
 from .checkpoint import checkpoint_ready, ensure_checkpoint
-from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES
+from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES, SCORE_SUFFIXES
 from .ffmpeg_bin import ffmpeg_executable
 from .instruments import DEFAULT_INSTRUMENT, get_instrument, list_instruments
 from .jobs import Job, store
 from .melody import track_melody, write_notes_midi
 from .midi_io import is_midi, to_concert_midi, to_written_midi
 from .score import demo_scale_musicxml, midi_to_musicxml
+from .transpose import TransposeError, detect_written_key, load_score, read_keys, transpose_score_file
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("keyprint")
@@ -98,6 +100,120 @@ def _parse_instrument(instrument_id: str | None):
 @app.get("/instruments")
 def instruments() -> dict:
     return {"default": DEFAULT_INSTRUMENT, "items": list_instruments()}
+
+
+async def _read_upload(file: UploadFile, allowed: set[str], dest: Path) -> Path:
+    if not file.filename:
+        raise HTTPException(400, "请上传谱子。")
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in allowed:
+        raise HTTPException(400, "请上传 MusicXML 或 MIDI。")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    path = dest.with_suffix(suffix)
+    size = 0
+    try:
+        with path.open("wb") as handle:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(400, "文件超过 80MB。")
+                handle.write(chunk)
+    except HTTPException:
+        path.unlink(missing_ok=True)
+        raise
+    if size == 0:
+        path.unlink(missing_ok=True)
+        raise HTTPException(400, "上传是空文件。")
+    return path
+
+
+@app.post("/key-transpose/inspect")
+async def inspect_key_transpose(file: UploadFile = File(...)) -> dict:
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            path = await _read_upload(file, SCORE_SUFFIXES, Path(tmp) / "score")
+            key_id = detect_written_key(load_score(path))
+        except TransposeError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    return {"key": key_id}
+
+
+@app.post("/key-transpose")
+async def create_key_transpose(
+    file: UploadFile = File(...),
+    from_key: str = Form(...),
+    to_key: str = Form(...),
+) -> dict:
+    job = store.create(file.filename or "score", instrument="piano")
+    try:
+        source = await _read_upload(file, SCORE_SUFFIXES, job.directory / "source")
+        result = transpose_score_file(
+            source,
+            job.directory / "score.musicxml",
+            job.directory / "score.mid",
+            from_key,
+            to_key,
+            Path(job.filename).stem,
+        )
+    except TransposeError as exc:
+        store.purge(job.id)
+        raise HTTPException(400, str(exc)) from exc
+    except HTTPException:
+        store.purge(job.id)
+        raise
+    except Exception as exc:
+        log.exception("Key transpose failed")
+        store.purge(job.id)
+        raise HTTPException(500, "移调失败，请再试一次。") from exc
+    job.key_name = result["key"]
+    job.note_count = result["note_count"]
+    job.stage = "done"
+    job.message = "已移调"
+    job.error = None
+    store.save(job)
+    payload = job.to_dict()
+    payload.update({"from_key": result["from_key"], "to_key": result["to_key"]})
+    return payload
+
+
+@app.post("/key-transpose/{job_id}")
+def redo_key_transpose(job_id: str, to_key: str = Form(...)) -> dict:
+    job = store.get(job_id)
+    if not job:
+        raise HTTPException(404, "找不到这个任务。")
+    sources = list(job.directory.glob("source.*"))
+    if not sources:
+        raise HTTPException(409, "找不到原来的谱。")
+    keys = read_keys(job.directory)
+    from_key = keys.get("from_key")
+    if not from_key:
+        raise HTTPException(409, "找不到原来的调。")
+    try:
+        result = transpose_score_file(
+            sources[0],
+            job.directory / "score.musicxml",
+            job.directory / "score.mid",
+            from_key,
+            to_key,
+            Path(job.filename).stem,
+        )
+    except TransposeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        log.exception("Key re-transpose failed")
+        raise HTTPException(500, "移调失败，请再试一次。") from exc
+    job.key_name = result["key"]
+    job.note_count = result["note_count"]
+    job.stage = "done"
+    job.message = "已移调"
+    job.error = None
+    store.save(job)
+    payload = job.to_dict()
+    payload.update({"from_key": result["from_key"], "to_key": result["to_key"]})
+    return payload
 
 
 @app.post("/jobs")

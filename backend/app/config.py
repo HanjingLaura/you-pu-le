@@ -26,6 +26,7 @@ ALLOWED_SUFFIXES = {
 }
 
 MIDI_SUFFIXES = {".mid", ".midi"}
+SCORE_SUFFIXES = {".musicxml", ".xml", ".mxl", ".mid", ".midi"}
 
 CHECKPOINT_DIR = Path.home() / "piano_transcription_inference_data"
 CHECKPOINT_PATH = CHECKPOINT_DIR / "note_F1=0.9677_pedal_F1=0.9186.pth"

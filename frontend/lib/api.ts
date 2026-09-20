@@ -1,5 +1,5 @@
 // Same-origin by default so the browser only needs the Next.js port.
-// `next.config.ts` rewrites /instruments, /jobs, /demo, /health to FastAPI.
+// `next.config.ts` rewrites /instruments, /jobs, /key-transpose, /demo, /health to FastAPI.
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export type JobStage =
@@ -110,6 +110,51 @@ export async function getMusicXml(id: string): Promise<string> {
     throw new Error(await readError(response));
   }
   return response.text();
+}
+
+export type TransposeJob = Job & {
+  from_key?: string;
+  to_key?: string;
+};
+
+export async function inspectScoreKey(file: File): Promise<string | null> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(`${API_BASE}/key-transpose/inspect`, {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) return null;
+  const payload = (await response.json()) as { key?: string };
+  return payload.key || null;
+}
+
+export async function transposeScore(file: File, fromKey: string, toKey: string): Promise<TransposeJob> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("from_key", fromKey);
+  body.append("to_key", toKey);
+  const response = await fetch(`${API_BASE}/key-transpose`, {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return response.json();
+}
+
+export async function retranposeJob(id: string, toKey: string): Promise<TransposeJob> {
+  const body = new FormData();
+  body.append("to_key", toKey);
+  const response = await fetch(`${API_BASE}/key-transpose/${id}`, {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return response.json();
 }
 
 export async function rescoreJob(id: string, instrument: string): Promise<Job> {
