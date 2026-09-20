@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pretty_midi
 
-from .piano import PianoNote
+from .piano import PianoNote, merge_unisons
 
 SAMPLE_RATE = 16000
 HOP_LENGTH = 160
@@ -129,30 +129,6 @@ def apply_range(notes: list[PianoNote], low: int | None, high: int | None) -> li
             )
         )
     return adjusted
-
-
-def merge_unisons(notes: list[PianoNote], gap: float = 0.14) -> list[PianoNote]:
-    merged: list[PianoNote] = []
-    for item in sorted(notes, key=lambda note: (note.start, note.midi)):
-        if (
-            merged
-            and item.midi == merged[-1].midi
-            and item.start <= merged[-1].start + merged[-1].duration + gap
-        ):
-            end = max(merged[-1].start + merged[-1].duration, item.start + item.duration)
-            merged[-1].duration = end - merged[-1].start
-            merged[-1].velocity = max(merged[-1].velocity, item.velocity)
-            continue
-        merged.append(
-            PianoNote(
-                midi=item.midi,
-                start=item.start,
-                duration=item.duration,
-                velocity=item.velocity,
-                hand=item.hand,
-            )
-        )
-    return merged
 
 
 def write_notes_midi(path: Path, notes: list[PianoNote], bpm: float = 80) -> Path:

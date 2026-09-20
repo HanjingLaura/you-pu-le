@@ -305,6 +305,31 @@ def prepare_piano(midi_path, bpm: float | None = None) -> tuple[list[PianoEvent]
     return to_events(notes, tempo), tempo
 
 
+def merge_unisons(notes: list[PianoNote], gap: float = 0.14, fragment: float = 0.18) -> list[PianoNote]:
+    merged: list[PianoNote] = []
+    for item in sorted(notes, key=lambda note: (note.start, note.midi)):
+        if (
+            merged
+            and item.midi == merged[-1].midi
+            and item.start <= merged[-1].start + merged[-1].duration + gap
+            and (item.duration < fragment or merged[-1].duration < fragment)
+        ):
+            end = max(merged[-1].start + merged[-1].duration, item.start + item.duration)
+            merged[-1].duration = end - merged[-1].start
+            merged[-1].velocity = max(merged[-1].velocity, item.velocity)
+            continue
+        merged.append(
+            PianoNote(
+                midi=item.midi,
+                start=item.start,
+                duration=item.duration,
+                velocity=item.velocity,
+                hand=item.hand,
+            )
+        )
+    return merged
+
+
 def pick_melody(pitches: list[int], low: int | None = None, high: int | None = None) -> int:
     unique = sorted(set(pitches))
     if not unique:
@@ -393,27 +418,7 @@ def extract_melody(notes: list[PianoNote], low: int | None = None, high: int | N
         melody.append(chosen)
         previous = chosen.midi
 
-    merged: list[PianoNote] = []
-    for item in melody:
-        if (
-            merged
-            and item.midi == merged[-1].midi
-            and item.start <= merged[-1].start + merged[-1].duration + 0.14
-        ):
-            end = max(merged[-1].start + merged[-1].duration, item.start + item.duration)
-            merged[-1].duration = end - merged[-1].start
-            merged[-1].velocity = max(merged[-1].velocity, item.velocity)
-            continue
-        merged.append(
-            PianoNote(
-                midi=item.midi,
-                start=item.start,
-                duration=item.duration,
-                velocity=item.velocity,
-                hand="melody",
-            )
-        )
-    return merged
+    return merge_unisons(melody)
 
 
 def quantize_voice(notes: list[PianoNote], bpm: float, low: int | None = None, high: int | None = None) -> list[PianoEvent]:
