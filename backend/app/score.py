@@ -15,7 +15,7 @@ from .instruments import (
     music21_instrument,
 )
 from .melody import track_melody
-from .piano import estimate_bpm, fit_duration, load_notes, prepare_piano, quantize_voice
+from .piano import PianoEvent, estimate_bpm, fit_duration, load_notes, prepare_piano, quantize_voice
 
 log = logging.getLogger("keyprint")
 
@@ -110,7 +110,7 @@ def midi_to_musicxml(
         if not notes:
             notes = load_notes(midi_path)
         bpm = estimate_bpm(notes) if notes else 80.0
-        events = quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high)
+        events = _trim_leading_measures(quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high))
         detected_key = detect_key([pitch for event in events for pitch in event.pitches])
         score = _single_staff_from_events(events, detected_key, bpm, heading, spec)
         note_count = len(events)
@@ -210,6 +210,23 @@ def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec
     score.metadata.movementName = None
     score.insert(0, part)
     return score
+
+
+def _trim_leading_measures(events: list) -> list:
+    if not events:
+        return events
+    shift = int(events[0].onset // 4) * 4
+    if shift <= 0:
+        return events
+    return [
+        PianoEvent(
+            onset=event.onset - shift,
+            duration=event.duration,
+            pitches=list(event.pitches),
+            hand=event.hand,
+        )
+        for event in events
+    ]
 
 
 def _rest_pieces(length: float) -> list[float]:

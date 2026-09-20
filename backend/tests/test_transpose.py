@@ -6,8 +6,8 @@ import pretty_midi
 from music21 import chord, clef, converter, note
 
 from app.midi_io import to_concert_midi, to_written_midi
-from app.piano import PianoNote, extract_melody
-from app.score import detect_key, display_title, midi_to_musicxml
+from app.piano import PianoEvent, PianoNote, extract_melody
+from app.score import _trim_leading_measures, detect_key, display_title, midi_to_musicxml
 
 
 def _write_midi(path: Path, pitches: list[int], bpm: float = 80) -> Path:
@@ -139,6 +139,15 @@ def test_cello_uses_treble_clef(tmp_path: Path):
 def test_ugly_filename_becomes_draft_title():
     assert display_title("v0200fg10000dagm2ifog65lchoooj3g.mp4") == "草稿谱"
     assert display_title("小星星") == "小星星"
+
+
+def test_trim_leading_measures_keeps_bar_position():
+    events = [
+        PianoEvent(onset=8.5, duration=0.5, pitches=[72], hand="melody"),
+        PianoEvent(onset=9.0, duration=1.0, pitches=[74], hand="melody"),
+    ]
+    trimmed = _trim_leading_measures(events)
+    assert [event.onset for event in trimmed] == [0.5, 1.0]
 
 
 def test_extract_melody_prefers_continuous_line():
