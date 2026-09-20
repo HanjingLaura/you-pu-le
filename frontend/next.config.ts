@@ -7,8 +7,10 @@ const backend =
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: [
+    "civilian-fiscal-appliance-nickel.trycloudflare.com",
     "opening-wars-cardiff-facts.trycloudflare.com",
     "*.trycloudflare.com",
+    "curvy-breads-do.loca.lt",
     "eager-suits-heal.loca.lt",
     "*.loca.lt",
     "loca.lt",
