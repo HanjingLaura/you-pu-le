@@ -1,7 +1,7 @@
 "use client";
 
 import { DownloadSimple } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   API_BASE,
   DEFAULT_INSTRUMENT,
@@ -31,10 +31,6 @@ const STAGE_PROGRESS: Record<string, number> = {
 
 function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function nameOf(id: string, items: Instrument[]) {
-  return items.find((item) => item.id === id)?.name ?? id;
 }
 
 export function TransposeApp() {
@@ -172,22 +168,12 @@ export function TransposeApp() {
     }
   }
 
-  const routeLabel = useMemo(() => {
-    const from = nameOf(job?.source_instrument || sourceId, instruments);
-    const to = nameOf(job?.instrument || targetId, instruments);
-    return `${from} → ${to}`;
-  }, [instruments, job, sourceId, targetId]);
-
   if (musicXml && job?.stage === "done") {
     return (
       <div className="result-shell">
         <div className="result-bar">
           <div>
             <p className="result-bar__brand">移调</p>
-            <p className="result-bar__note">
-              {routeLabel}
-              {rescoring ? " · 正在换谱" : ""}
-            </p>
           </div>
           <div className="result-bar__actions">
             <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
@@ -250,6 +236,7 @@ export function TransposeApp() {
           <button
             type="button"
             className={`drop-well ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
+            aria-label="放入文件"
             disabled={busy}
             onClick={() => inputRef.current?.click()}
             onDragEnter={(event) => {
@@ -276,30 +263,23 @@ export function TransposeApp() {
             {file ? (
               <span className="drop-well__file">
                 <span className="drop-well__name">{file.name}</span>
-                <span className="drop-well__meta">
-                  {formatSize(file.size)} · 点击可更换
-                </span>
+                <span className="drop-well__meta">{formatSize(file.size)}</span>
               </span>
-            ) : (
-              <span className="drop-well__copy">
-                <span className="drop-well__title">{dragging ? "松开放入" : "放入 MIDI、音频或视频"}</span>
-                <span className="drop-well__hint">MID / MP3 / WAV / MP4，最长 3 分钟</span>
-              </span>
-            )}
+            ) : null}
           </button>
 
           <label className="link-field">
-            <span className="field-label">或粘贴链接</span>
             <input
               value={url}
               disabled={busy || Boolean(file)}
+              aria-label="链接"
               onChange={(event) => {
                 setUrl(event.target.value);
                 setFile(null);
                 setError(null);
                 setJob(null);
               }}
-              placeholder="YouTube / B 站 / 音频直链"
+              placeholder="链接"
             />
           </label>
 
@@ -327,8 +307,6 @@ export function TransposeApp() {
               )}
             </span>
           </button>
-
-          {sourceId === targetId ? <p className="privacy-note">请选两件不同的乐器。</p> : null}
 
           {error ? (
             <p className="error-message" role="alert">

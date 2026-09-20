@@ -12,7 +12,7 @@ import {
   type Job,
 } from "@/lib/api";
 import { DotMatrixLoader } from "./DotMatrixLoader";
-import { InstrumentPicker, keyLabelForInstrument } from "./InstrumentPicker";
+import { InstrumentPicker } from "./InstrumentPicker";
 import { ScoreViewer } from "./ScoreViewer";
 
 const ACCEPT = ".mp4,.mov,.webm,.mkv,.wav,.mp3,.m4a,.flac,.ogg";
@@ -180,10 +180,6 @@ export function KeyprintApp() {
         <div className="result-bar">
           <div>
             <p className="result-bar__brand">有谱了</p>
-            <p className="result-bar__note">
-              {keyLabelForInstrument(job.instrument || instrumentId)}
-              {rescoring ? " · 正在换谱" : ""}
-            </p>
           </div>
           <div className="result-bar__actions">
             <InstrumentPicker
@@ -246,6 +242,7 @@ export function KeyprintApp() {
           <button
             type="button"
             className={`drop-well ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
+            aria-label="放入文件"
             disabled={busy}
             onClick={() => inputRef.current?.click()}
             onDragEnter={(event) => {
@@ -272,30 +269,23 @@ export function KeyprintApp() {
             {file ? (
               <span className="drop-well__file">
                 <span className="drop-well__name">{file.name}</span>
-                <span className="drop-well__meta">
-                  {formatSize(file.size)} · 点击可更换
-                </span>
+                <span className="drop-well__meta">{formatSize(file.size)}</span>
               </span>
-            ) : (
-              <span className="drop-well__copy">
-                <span className="drop-well__title">{dragging ? "松开放入" : "把视频或音频放进来"}</span>
-                <span className="drop-well__hint">MP4 / MOV / WAV / MP3，最长 3 分钟</span>
-              </span>
-            )}
+            ) : null}
           </button>
 
           <label className="link-field">
-            <span className="field-label">或粘贴链接</span>
             <input
               value={url}
               disabled={busy || Boolean(file)}
+              aria-label="链接"
               onChange={(event) => {
                 setUrl(event.target.value);
                 setFile(null);
                 setError(null);
                 setJob(null);
               }}
-              placeholder="YouTube / B 站 / 音频直链"
+              placeholder="链接"
             />
           </label>
 

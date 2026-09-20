@@ -10,7 +10,6 @@ export function TunerApp() {
   const [error, setError] = useState<string | null>(null);
   const [a4, setA4] = useState(A4_DEFAULT);
   const [reading, setReading] = useState<PitchReading | null>(null);
-  const [listening, setListening] = useState(false);
   const a4Ref = useRef(a4);
   const smoothedRef = useRef<number | null>(null);
 
@@ -32,7 +31,6 @@ export function TunerApp() {
         source.connect(analyser);
         const buffer = new Float32Array(analyser.fftSize);
         setError(null);
-        setListening(true);
 
         const tick = () => {
           if (cancelled) return;
@@ -52,8 +50,7 @@ export function TunerApp() {
         frame = window.requestAnimationFrame(tick);
       } catch {
         if (!cancelled) {
-          setListening(false);
-          setError("打不开麦克风。请允许浏览器使用麦克风后再回到这一页。");
+          setError("打不开麦克风。");
         }
       }
     };
@@ -64,7 +61,6 @@ export function TunerApp() {
       window.cancelAnimationFrame(frame);
       smoothedRef.current = null;
       setReading(null);
-      setListening(false);
       void stopTunerAudio();
     };
   }, []);
@@ -91,7 +87,7 @@ export function TunerApp() {
               <span className="tuner-note__idle">—</span>
             )}
           </p>
-          <p className={`tuner-side ${inTune ? "is-true" : ""}`}>{side}</p>
+          {reading ? <p className={`tuner-side ${inTune ? "is-true" : ""}`}>{side}</p> : null}
           <div className="tuner-gauge" aria-hidden="true">
             <span className="tuner-gauge__track" />
             <span className="tuner-gauge__center" />
@@ -100,19 +96,16 @@ export function TunerApp() {
               style={{ left: `${50 + cents}%` }}
             />
           </div>
-          <p className="tuner-meta">
-            {reading
-              ? `${reading.frequency.toFixed(1)} Hz · ${reading.cents > 0 ? "+" : ""}${reading.cents} 音分`
-              : listening
-                ? "在听"
-                : error
-                  ? "麦克风没开"
-                  : "正在打开麦克风"}
-          </p>
+          {reading ? (
+            <p className="tuner-meta">
+              {reading.frequency.toFixed(1)} Hz · {reading.cents > 0 ? "+" : ""}
+              {reading.cents}
+            </p>
+          ) : null}
         </section>
 
         <label className="slider-field">
-          <span className="field-label">A4 = {a4} Hz</span>
+          <span className="field-label">{a4}</span>
           <input
             type="range"
             min={415}

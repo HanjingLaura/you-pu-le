@@ -169,12 +169,12 @@ export function MetronomeApp() {
         </section>
 
         <label className="slider-field">
-          <span className="field-label">速度</span>
           <input
             type="range"
             min={30}
             max={240}
             value={bpm}
+            aria-label="速度"
             onChange={(event) => setBpm(Number(event.target.value))}
           />
         </label>
@@ -184,7 +184,7 @@ export function MetronomeApp() {
             −1
           </button>
           <button type="button" className="text-button" onClick={tap}>
-            拍一下定速
+            拍速
           </button>
           <button type="button" className="text-button" onClick={() => setBpm((value) => clampBpm(value + 1))}>
             +1

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_INSTRUMENT, FALLBACK_INSTRUMENTS, listInstruments, type Instrument } from "@/lib/api";
+import { FALLBACK_INSTRUMENTS, listInstruments, type Instrument } from "@/lib/api";
 
 type Props = {
   label: string;
@@ -38,8 +38,6 @@ export function InstrumentSelect({ label, value, items: itemsProp, disabled, onC
     return [...map.entries()];
   }, [items]);
 
-  const current = items.find((item) => item.id === value) ?? items.find((item) => item.id === DEFAULT_INSTRUMENT);
-
   return (
     <label className="link-field">
       <span className="field-label">{label}</span>
@@ -47,19 +45,19 @@ export function InstrumentSelect({ label, value, items: itemsProp, disabled, onC
         className="instrument-select"
         value={value}
         disabled={disabled}
+        aria-label={label}
         onChange={(event) => onChange(event.target.value)}
       >
         {groups.map(([group, groupItems]) => (
           <optgroup key={group} label={group}>
             {groupItems.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name} · {item.key_label} · {item.staff_label}
+                {item.name}
               </option>
             ))}
           </optgroup>
         ))}
       </select>
-      {current ? <span className="field-hint">{current.hint}</span> : null}
     </label>
   );
 }
