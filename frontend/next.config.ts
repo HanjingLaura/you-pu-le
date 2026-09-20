@@ -7,7 +7,7 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  trailingSlash: Boolean(basePath),
+  skipTrailingSlashRedirect: Boolean(basePath),
   ...(basePath ? { basePath } : {}),
   allowedDevOrigins: [
     "civilian-fiscal-appliance-nickel.trycloudflare.com",
