@@ -189,6 +189,9 @@ async def inspect_key_transpose(file: UploadFile = File(...)) -> dict:
             key_id = _detect_written_key(path)
         except TransposeError as exc:
             raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            log.exception("Key inspect failed")
+            raise HTTPException(500, "读不了这份谱。请上传 MusicXML 或 MIDI。") from exc
     return {"key": key_id}
 
 
