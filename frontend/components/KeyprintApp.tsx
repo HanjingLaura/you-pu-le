@@ -186,13 +186,13 @@ export function KeyprintApp() {
             <div className="result-bar__actions">
               {job.id !== "demo" ? (
                 <>
-                  <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
-                    <DownloadSimple className="size-4" />
-                    MIDI
+                  <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`} aria-label="下载 MIDI">
+                    <DownloadSimple className="size-4 shrink-0" />
+                    <span className="download-button__text">MIDI</span>
                   </a>
-                  <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
-                    <DownloadSimple className="size-4" />
-                    MusicXML
+                  <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`} aria-label="下载 MusicXML">
+                    <DownloadSimple className="size-4 shrink-0" />
+                    <span className="download-button__text">XML</span>
                   </a>
                 </>
               ) : null}

@@ -555,10 +555,13 @@ a:focus-visible {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+  flex-shrink: 0;
   gap: 6px;
   height: 36px;
-  padding: 0 12px;
+  padding: 0 14px;
   white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
   border: 0;
   border-radius: 10px;
   background: var(--button);
@@ -566,6 +569,12 @@ a:focus-visible {
   font-size: 15px;
   font-weight: 520;
   text-decoration: none;
+}
+
+.download-button__text {
+  display: inline-block;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .download-button.ghost {
@@ -1068,8 +1077,9 @@ a:focus-visible {
   .text-button {
     justify-content: center;
     flex: 0 0 auto;
+    flex-shrink: 0;
     width: auto;
-    min-width: max-content;
+    min-width: 4.75rem;
     height: 40px;
   }
 

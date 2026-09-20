@@ -96,13 +96,13 @@ export function TransposeApp() {
         <div className="result-bar">
           <KeySelect label="移到" value={job.to_key || toKey} disabled={submitting} onChange={changeTarget} />
           <div className="result-bar__actions">
-            <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
-              <DownloadSimple className="size-4" />
-              MIDI
+            <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`} aria-label="下载 MIDI">
+              <DownloadSimple className="size-4 shrink-0" />
+              <span className="download-button__text">MIDI</span>
             </a>
-            <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
-              <DownloadSimple className="size-4" />
-              MusicXML
+            <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`} aria-label="下载 MusicXML">
+              <DownloadSimple className="size-4 shrink-0" />
+              <span className="download-button__text">XML</span>
             </a>
             <button type="button" className="text-button" onClick={reset}>
               再来一次
