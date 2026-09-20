@@ -64,7 +64,6 @@ a:focus-visible {
   min-height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
-  align-items: safe center;
   justify-content: center;
   padding: 40px 20px;
   background: var(--paper);
@@ -369,12 +368,10 @@ a:focus-visible {
 
 .result-shell {
   width: min(1100px, 100%);
-  margin: 0 auto;
-  min-height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
-  display: grid;
-  grid-template-rows: auto 1fr;
-  padding: max(16px, calc(env(safe-area-inset-top, 0px) + 36px)) 12px 20px;
-  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
 }
 
 .result-bar {
@@ -382,7 +379,7 @@ a:focus-visible {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
-  margin-bottom: 12px;
+  margin: 0;
 }
 
 .result-bar__brand {
@@ -1015,7 +1012,7 @@ a:focus-visible {
   }
 
   .score-paper {
-    min-height: 480px;
+    min-height: 320px;
     padding: 16px 20px 24px;
   }
 }
@@ -1046,7 +1043,6 @@ a:focus-visible {
 
   .result-shell {
     width: 100%;
-    padding: max(12px, calc(env(safe-area-inset-top, 0px) + 36px)) 8px 16px;
   }
 
   .key-chip {

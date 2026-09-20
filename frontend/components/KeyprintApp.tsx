@@ -176,37 +176,39 @@ export function KeyprintApp() {
 
   if (musicXml && job?.stage === "done") {
     return (
-      <div className="result-shell">
-        <div className="result-bar">
-          <InstrumentPicker
-            value={job.instrument || instrumentId}
-            disabled={rescoring}
-            onChange={changeInstrument}
-          />
-          <div className="result-bar__actions">
-            {job.id !== "demo" ? (
-              <>
-                <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
-                  <DownloadSimple className="size-4" />
-                  MIDI
-                </a>
-                <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
-                  <DownloadSimple className="size-4" />
-                  MusicXML
-                </a>
-              </>
-            ) : null}
-            <button type="button" className="text-button" onClick={reset}>
-              再来一次
-            </button>
+      <div className="app-frame">
+        <div className="result-shell">
+          <div className="result-bar">
+            <InstrumentPicker
+              value={job.instrument || instrumentId}
+              disabled={rescoring}
+              onChange={changeInstrument}
+            />
+            <div className="result-bar__actions">
+              {job.id !== "demo" ? (
+                <>
+                  <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
+                    <DownloadSimple className="size-4" />
+                    MIDI
+                  </a>
+                  <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
+                    <DownloadSimple className="size-4" />
+                    MusicXML
+                  </a>
+                </>
+              ) : null}
+              <button type="button" className="text-button" onClick={reset}>
+                再来一次
+              </button>
+            </div>
           </div>
+          {error ? (
+            <p className="error-message result-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <ScoreViewer musicXml={musicXml} />
         </div>
-        {error ? (
-          <p className="error-message result-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <ScoreViewer musicXml={musicXml} />
       </div>
     );
   }

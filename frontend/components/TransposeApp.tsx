@@ -92,29 +92,31 @@ export function TransposeApp() {
 
   if (musicXml && job?.stage === "done") {
     return (
-      <div className="result-shell">
-        <div className="result-bar">
-          <KeySelect label="移到" value={job.to_key || toKey} disabled={submitting} onChange={changeTarget} />
-          <div className="result-bar__actions">
-            <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
-              <DownloadSimple className="size-4" />
-              MIDI
-            </a>
-            <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
-              <DownloadSimple className="size-4" />
-              MusicXML
-            </a>
-            <button type="button" className="text-button" onClick={reset}>
-              再来一次
-            </button>
+      <div className="app-frame">
+        <div className="result-shell">
+          <div className="result-bar">
+            <KeySelect label="移到" value={job.to_key || toKey} disabled={submitting} onChange={changeTarget} />
+            <div className="result-bar__actions">
+              <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
+                <DownloadSimple className="size-4" />
+                MIDI
+              </a>
+              <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
+                <DownloadSimple className="size-4" />
+                MusicXML
+              </a>
+              <button type="button" className="text-button" onClick={reset}>
+                再来一次
+              </button>
+            </div>
           </div>
+          {error ? (
+            <p className="error-message result-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <ScoreViewer musicXml={musicXml} />
         </div>
-        {error ? (
-          <p className="error-message result-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <ScoreViewer musicXml={musicXml} />
       </div>
     );
   }
