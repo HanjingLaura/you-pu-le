@@ -111,6 +111,7 @@ export function TunerApp() {
             min={415}
             max={466}
             value={a4}
+            aria-label="A4"
             onChange={(event) => setA4(Number(event.target.value))}
           />
         </label>
