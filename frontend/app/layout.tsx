@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
+import { SpiderSolitaire } from "@/components/SpiderSolitaire";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
+        <SpiderSolitaire />
         {children}
         <AppNav />
       </body>

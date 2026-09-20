@@ -14,7 +14,6 @@ import {
 import { DotMatrixLoader } from "./DotMatrixLoader";
 import { InstrumentPicker, keyLabelForInstrument } from "./InstrumentPicker";
 import { ScoreViewer } from "./ScoreViewer";
-import { SpiderSolitaire } from "./SpiderSolitaire";
 
 const ACCEPT = ".mp4,.mov,.webm,.mkv,.wav,.mp3,.m4a,.flac,.ogg";
 
@@ -221,7 +220,6 @@ export function KeyprintApp() {
 
   return (
     <div className="app-frame">
-      <SpiderSolitaire />
       <main className="work-panel">
         <header className="panel-heading">
           <h1>有谱了</h1>
