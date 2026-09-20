@@ -1,30 +1,15 @@
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
 from music21 import converter, interval, key as keymod
 from music21 import metadata, note, pitch, stream
 
+from .keys import KEY_TONICS, TransposeError, write_keys
 from .score import _clean_musicxml, display_title
 
 log = logging.getLogger("keyprint")
-
-KEY_TONICS = {
-    "C": "C",
-    "Db": "D-",
-    "D": "D",
-    "Eb": "E-",
-    "E": "E",
-    "F": "F",
-    "F#": "F#",
-    "G": "G",
-    "Ab": "A-",
-    "A": "A",
-    "Bb": "B-",
-    "B": "B",
-}
 
 _PC_TO_ID = {
     0: "C",
@@ -40,10 +25,6 @@ _PC_TO_ID = {
     10: "Bb",
     11: "B",
 }
-
-
-class TransposeError(ValueError):
-    pass
 
 
 def parse_key(key_id: str) -> keymod.Key:
@@ -114,27 +95,6 @@ def _ensure_key(score, target: keymod.Key) -> None:
         part.insert(0, target)
 
 
-def _write_keys(directory: Path, from_key: str, to_key: str) -> None:
-    (directory / "keys.json").write_text(
-        json.dumps({"from_key": from_key, "to_key": to_key}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-
-def read_keys(directory: Path) -> dict[str, str]:
-    path = directory / "keys.json"
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return {
-        "from_key": str(payload.get("from_key") or ""),
-        "to_key": str(payload.get("to_key") or ""),
-    }
-
-
 def transpose_score_file(
     source: Path,
     xml_path: Path,
@@ -158,7 +118,7 @@ def transpose_score_file(
     score.write("musicxml", fp=str(xml_path))
     _clean_musicxml(xml_path)
     score.write("midi", fp=str(midi_path))
-    _write_keys(xml_path.parent, from_key, to_key)
+    write_keys(xml_path.parent, from_key, to_key)
     return {
         "from_key": from_key,
         "to_key": to_key,

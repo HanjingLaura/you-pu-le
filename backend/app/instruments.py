@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from music21 import clef, instrument
-
 
 @dataclass(frozen=True)
 class InstrumentSpec:
@@ -70,6 +68,8 @@ def list_instruments() -> list[dict]:
 
 
 def music21_instrument(spec: InstrumentSpec):
+    from music21 import instrument
+
     mapping = {
         "piano": instrument.Piano,
         "flute": instrument.Flute,
@@ -92,6 +92,8 @@ def music21_instrument(spec: InstrumentSpec):
 
 
 def music21_clef(spec: InstrumentSpec):
+    from music21 import clef
+
     if spec.grand:
         return clef.TrebleClef()
     return clef.TrebleClef()

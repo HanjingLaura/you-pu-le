@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -11,17 +12,10 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 
-from .audio import AudioError, extract_wav
-from .download import download_source, validate_url
-from .checkpoint import checkpoint_ready, ensure_checkpoint
 from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES, SCORE_SUFFIXES
-from .ffmpeg_bin import ffmpeg_executable
 from .instruments import DEFAULT_INSTRUMENT, get_instrument, list_instruments
 from .jobs import Job, store
-from .melody import track_melody, write_notes_midi
-from .midi_io import is_midi, to_concert_midi, to_written_midi
-from .score import demo_scale_musicxml, midi_to_musicxml
-from .transpose import TransposeError, detect_written_key, load_score, read_keys, transpose_score_file
+from .keys import TransposeError, read_keys
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("keyprint")
@@ -45,10 +39,43 @@ app.add_middleware(
 _JOB_LOCK = threading.Lock()
 
 
+def _on_vercel() -> bool:
+    return bool(os.environ.get("VERCEL"))
+
+
+def _detect_written_key(path: Path) -> str:
+    if _on_vercel():
+        from .lite_transpose import detect_written_key_lite
+
+        return detect_written_key_lite(path)
+    from .transpose import detect_written_key, load_score
+
+    return detect_written_key(load_score(path))
+
+
+def _transpose_score_file(
+    source: Path,
+    xml_path: Path,
+    midi_path: Path,
+    from_key: str,
+    to_key: str,
+    title: str | None = None,
+) -> dict:
+    if _on_vercel():
+        from .lite_transpose import transpose_score_file_lite
+
+        return transpose_score_file_lite(source, xml_path, midi_path, from_key, to_key, title)
+    from .transpose import transpose_score_file
+
+    return transpose_score_file(source, xml_path, midi_path, from_key, to_key, title)
+
+
 @app.on_event("startup")
 def warmup() -> None:
-    if os.environ.get("VERCEL"):
+    if _on_vercel():
         return
+    from .ffmpeg_bin import ffmpeg_executable
+
     ffmpeg_executable()
     threading.Thread(target=_warmup_checkpoint, daemon=True).start()
     threading.Thread(target=_resume_unfinished_jobs, daemon=True).start()
@@ -56,6 +83,8 @@ def warmup() -> None:
 
 def _warmup_checkpoint() -> None:
     try:
+        from .checkpoint import ensure_checkpoint
+
         ensure_checkpoint()
     except Exception:
         log.exception("Checkpoint warmup failed")
@@ -74,26 +103,40 @@ def root() -> dict:
 
 @app.get("/health")
 def health() -> dict:
+    if _on_vercel():
+        return {
+            "ok": True,
+            "ffmpeg": False,
+            "ffmpeg_path": None,
+            "device": "vercel",
+            "checkpoint_ready": False,
+            "model_loaded": False,
+        }
     try:
+        from .ffmpeg_bin import ffmpeg_executable
+
         ffmpeg_path = ffmpeg_executable()
         ffmpeg_ok = True
     except Exception:
         ffmpeg_path = None
         ffmpeg_ok = False
     try:
+        from .checkpoint import checkpoint_ready
         from .transcribe import choose_device, model_loaded
 
         device = choose_device()
         loaded = model_loaded()
+        ready = checkpoint_ready()
     except Exception:
         device = "unavailable"
         loaded = False
+        ready = False
     return {
         "ok": ffmpeg_ok,
         "ffmpeg": ffmpeg_ok,
         "ffmpeg_path": ffmpeg_path,
         "device": device,
-        "checkpoint_ready": checkpoint_ready(),
+        "checkpoint_ready": ready,
         "model_loaded": loaded,
     }
 
@@ -143,7 +186,7 @@ async def inspect_key_transpose(file: UploadFile = File(...)) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         try:
             path = await _read_upload(file, SCORE_SUFFIXES, Path(tmp) / "score")
-            key_id = detect_written_key(load_score(path))
+            key_id = _detect_written_key(path)
         except TransposeError as exc:
             raise HTTPException(400, str(exc)) from exc
     return {"key": key_id}
@@ -158,7 +201,7 @@ async def create_key_transpose(
     job = store.create(file.filename or "score", instrument="piano")
     try:
         source = await _read_upload(file, SCORE_SUFFIXES, job.directory / "source")
-        result = transpose_score_file(
+        result = _transpose_score_file(
             source,
             job.directory / "score.musicxml",
             job.directory / "score.mid",
@@ -200,7 +243,7 @@ def redo_key_transpose(job_id: str, to_key: str = Form(...)) -> dict:
     if not from_key:
         raise HTTPException(409, "找不到原来的调。")
     try:
-        result = transpose_score_file(
+        result = _transpose_score_file(
             sources[0],
             job.directory / "score.musicxml",
             job.directory / "score.mid",
@@ -232,6 +275,11 @@ async def create_job(
     instrument: str | None = Form(None),
     source_instrument: str | None = Form(None),
 ) -> dict:
+    if _on_vercel():
+        raise HTTPException(501, "线上先用校音、节拍和移调。扒谱请在电脑上打开。")
+    from .audio import AudioError
+    from .download import validate_url
+
     spec = _parse_instrument(instrument)
     source_spec = _parse_instrument(source_instrument)
     source_url = url.strip() if url else None
@@ -284,6 +332,10 @@ async def create_job(
 
 @app.get("/demo/musicxml", response_class=PlainTextResponse)
 def demo_musicxml(instrument: str | None = None) -> str:
+    if _on_vercel():
+        raise HTTPException(501, "线上先用校音、节拍和移调。")
+    from .score import demo_scale_musicxml
+
     spec = _parse_instrument(instrument)
     return demo_scale_musicxml(spec.id)
 
@@ -308,12 +360,15 @@ def download_midi(job_id: str) -> FileResponse:
     concert = job.directory / "score.mid"
     if not concert.exists():
         raise HTTPException(404, "MIDI 还没生成。")
-    spec = get_instrument(job.instrument)
     path = concert
-    if spec.write_semitones:
-        written = job.directory / "score-written.mid"
-        to_written_midi(concert, written, spec.id)
-        path = written
+    if not _on_vercel():
+        from .midi_io import to_written_midi
+
+        spec = get_instrument(job.instrument)
+        if spec.write_semitones:
+            written = job.directory / "score-written.mid"
+            to_written_midi(concert, written, spec.id)
+            path = written
     download_name = _download_stem(job.filename) + ".mid"
     return FileResponse(path, filename=download_name, media_type="audio/midi")
 
@@ -357,6 +412,10 @@ def _require_done(job_id: str) -> Job:
 
 
 def _rescore_locked(job_id: str, instrument_id: str) -> dict:
+    if _on_vercel():
+        raise HTTPException(501, "线上先用校音、节拍和移调。扒谱请在电脑上打开。")
+    from .score import midi_to_musicxml
+
     job = store.get(job_id)
     if not job:
         raise HTTPException(404, "找不到这个任务。")
@@ -406,6 +465,8 @@ def _rescore_locked(job_id: str, instrument_id: str) -> dict:
 
 
 def _prepare_score_midi(job: Job, spec, midi_path: Path, wav_path: Path) -> None:
+    from .melody import track_melody, write_notes_midi
+
     if spec.grand:
         piano_path = job.directory / "piano.mid"
         if piano_path.exists():
@@ -456,6 +517,11 @@ def run_job(job_id: str) -> None:
 
 
 def _run_job_locked(job: Job) -> None:
+    from .audio import AudioError, extract_wav
+    from .download import download_source
+    from .midi_io import is_midi, to_concert_midi
+    from .score import midi_to_musicxml
+
     try:
         sources = list(job.directory.glob("source.*"))
         if not sources and job.source_url:
