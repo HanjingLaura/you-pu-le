@@ -1,6 +1,6 @@
 // Same-origin by default so the browser only needs the Next.js port.
 // `next.config.ts` rewrites /instruments, /jobs, /key-transpose, /demo, /health to FastAPI.
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export type JobStage =
   | "queued"

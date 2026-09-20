@@ -1,0 +1,4 @@
+{
+  "framework": "fastapi",
+  "installCommand": "pip install -r requirements-vercel.txt"
+}

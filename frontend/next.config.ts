@@ -3,9 +3,11 @@ import type { NextConfig } from "next";
 
 const backend =
   process.env.KEYPRINT_BACKEND_URL ?? "http://127.0.0.1:8000";
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  ...(basePath ? { basePath } : {}),
   allowedDevOrigins: [
     "civilian-fiscal-appliance-nickel.trycloudflare.com",
     "opening-wars-cardiff-facts.trycloudflare.com",

@@ -176,8 +176,7 @@ export function KeyprintApp() {
 
   if (musicXml && job?.stage === "done") {
     return (
-      <div className="app-frame">
-        <div className="result-shell">
+      <div className="result-shell">
           <div className="result-bar">
             <InstrumentPicker
               value={job.instrument || instrumentId}
@@ -208,7 +207,6 @@ export function KeyprintApp() {
             </p>
           ) : null}
           <ScoreViewer musicXml={musicXml} />
-        </div>
       </div>
     );
   }

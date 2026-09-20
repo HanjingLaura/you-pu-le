@@ -30,7 +30,13 @@ log = logging.getLogger("keyprint")
 app = FastAPI(title="有谱了", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://hanjing-laura.vercel.app",
+        "https://youpule.vercel.app",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,6 +47,8 @@ _JOB_LOCK = threading.Lock()
 
 @app.on_event("startup")
 def warmup() -> None:
+    if os.environ.get("VERCEL"):
+        return
     ffmpeg_executable()
     threading.Thread(target=_warmup_checkpoint, daemon=True).start()
     threading.Thread(target=_resume_unfinished_jobs, daemon=True).start()

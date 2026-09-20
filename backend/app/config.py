@@ -1,7 +1,8 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "jobs"
+DATA_DIR = Path(os.environ.get("KEYPRINT_DATA_DIR") or ("/tmp/youpule-jobs" if os.environ.get("VERCEL") else ROOT / "data" / "jobs"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_DURATION_SEC = 180
