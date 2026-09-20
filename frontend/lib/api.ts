@@ -1,5 +1,6 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+// Same-origin by default so the browser only needs the Next.js port.
+// `next.config.ts` rewrites /instruments, /jobs, /demo, /health to FastAPI.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export type JobStage =
   | "queued"

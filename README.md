@@ -30,7 +30,7 @@ cd C:\Users\hj120\Desktop\Keyprint
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 ```powershell
@@ -38,7 +38,9 @@ cd frontend
 npm run dev
 ```
 
-浏览器打开 http://localhost:3000
+浏览器打开 http://localhost:3000（页面会同源转发 `/jobs`、`/instruments` 到后端，不必再单独开 8000）。
+
+Cloud Agent 上打开：点 Agents 窗口的插头图标 → Forwarded Ports → `localhost:3000`。手机上看这个对话时，本机地址打不到这台机器，请用电脑打开同一条 Agent，或在自己的 Windows 上跑 `.\start.ps1`。
 
 ## 目录
 
