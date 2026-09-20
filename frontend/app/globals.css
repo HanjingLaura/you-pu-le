@@ -482,13 +482,16 @@ a:focus-visible {
 }
 
 .key-chip--piano {
-  min-width: 40px;
+  min-width: 44px;
   padding: 0 8px;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .key-chip__piano {
-  width: 22px;
-  height: 22px;
+  display: block;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .result-bar__actions {

@@ -1,7 +1,5 @@
 "use client";
 
-import { PianoKeys } from "@phosphor-icons/react";
-
 type KeyChoice = {
   id: string;
   label: string;
@@ -60,7 +58,9 @@ export function InstrumentPicker({ value, disabled, onChange }: Props) {
         disabled={disabled}
         onClick={() => onChange("piano")}
       >
-        <PianoKeys className="key-chip__piano" weight={pianoOn ? "fill" : "regular"} />
+        <span className="key-chip__piano" aria-hidden="true">
+          🎹
+        </span>
       </button>
       <span className="key-picker__rule" aria-hidden="true" />
       {KEY_CHOICES.map((choice) => {

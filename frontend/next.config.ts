@@ -7,8 +7,11 @@ const backend =
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: [
+    "opening-wars-cardiff-facts.trycloudflare.com",
     "*.trycloudflare.com",
+    "eager-suits-heal.loca.lt",
     "*.loca.lt",
+    "loca.lt",
     "*.ngrok-free.app",
     "*.ngrok.io",
   ],
