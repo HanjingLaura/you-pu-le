@@ -80,3 +80,8 @@ def test_detects_written_g_major(tmp_path: Path):
     source = _scale_xml(tmp_path / "g.musicxml", [67, 69, 71], "G")
     score = converter.parse(str(source))
     assert detect_written_key(score) == "G"
+
+
+def test_midi_without_key_signature_stays_c(tmp_path: Path):
+    source = _scale_midi(tmp_path / "c.mid", [60, 62, 64, 65, 67, 69, 71, 72])
+    assert detect_written_key(converter.parse(str(source))) == "C"

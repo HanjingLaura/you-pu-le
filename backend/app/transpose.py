@@ -87,10 +87,7 @@ def detect_written_key(score) -> str:
             return canonical_key_id(item.asKey("major"))
         except Exception:
             continue
-    try:
-        return canonical_key_id(score.analyze("key"))
-    except Exception:
-        return "C"
+    return "C"
 
 
 def _interval(from_key: keymod.Key, to_key: keymod.Key) -> interval.Interval:
