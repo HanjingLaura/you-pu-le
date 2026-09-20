@@ -6,6 +6,12 @@ const backend =
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins: [
+    "*.trycloudflare.com",
+    "*.loca.lt",
+    "*.ngrok-free.app",
+    "*.ngrok.io",
+  ],
   turbopack: {
     root: path.join(__dirname),
   },
