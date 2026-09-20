@@ -12,6 +12,7 @@ export function TunerApp() {
   const [reading, setReading] = useState<PitchReading | null>(null);
   const a4Ref = useRef(a4);
   const smoothedRef = useRef<number | null>(null);
+  const heardAtRef = useRef(0);
 
   useEffect(() => {
     a4Ref.current = a4;
@@ -40,8 +41,9 @@ export function TunerApp() {
             const previous = smoothedRef.current;
             const next = previous ? previous * 0.65 + raw * 0.35 : raw;
             smoothedRef.current = next;
+            heardAtRef.current = performance.now();
             setReading(pitchFromFrequency(next, a4Ref.current));
-          } else {
+          } else if (performance.now() - heardAtRef.current > 700) {
             smoothedRef.current = null;
             setReading(null);
           }
@@ -70,8 +72,8 @@ export function TunerApp() {
   const side = !reading ? "等声音" : reading.cents < -8 ? "偏低" : reading.cents > 8 ? "偏高" : "准了";
 
   return (
-    <div className="app-frame">
-      <main className="work-panel">
+    <div className="app-frame app-frame--tuner">
+      <main className="work-panel work-panel--tuner">
         <header className="panel-heading">
           <h1>校音</h1>
         </header>
@@ -87,7 +89,7 @@ export function TunerApp() {
               <span className="tuner-note__idle">—</span>
             )}
           </p>
-          {reading ? <p className={`tuner-side ${inTune ? "is-true" : ""}`}>{side}</p> : null}
+          <p className={`tuner-side ${inTune ? "is-true" : ""} ${reading ? "" : "is-idle"}`}>{side}</p>
           <div className="tuner-gauge" aria-hidden="true">
             <span className="tuner-gauge__track" />
             <span className="tuner-gauge__center" />
@@ -96,12 +98,11 @@ export function TunerApp() {
               style={{ left: `${50 + cents}%` }}
             />
           </div>
-          {reading ? (
-            <p className="tuner-meta">
-              {reading.frequency.toFixed(1)} Hz · {reading.cents > 0 ? "+" : ""}
-              {reading.cents}
-            </p>
-          ) : null}
+          <p className={`tuner-meta ${reading ? "" : "is-idle"}`}>
+            {reading
+              ? `${reading.frequency.toFixed(1)} Hz · ${reading.cents > 0 ? "+" : ""}${reading.cents}`
+              : "\u00a0"}
+          </p>
         </section>
 
         <label className="slider-field">
