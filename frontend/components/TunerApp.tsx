@@ -72,7 +72,7 @@ export function TunerApp() {
   const side = !reading ? "等声音" : reading.cents < -8 ? "偏低" : reading.cents > 8 ? "偏高" : "准了";
 
   return (
-    <div className="app-frame app-frame--tuner">
+    <div className="app-frame">
       <main className="work-panel work-panel--tuner">
         <header className="panel-heading">
           <h1>校音</h1>

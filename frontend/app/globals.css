@@ -27,7 +27,7 @@ body {
   min-height: 100%;
   margin: 0;
   overflow-x: hidden;
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   background: var(--paper);
   color: var(--ink);
   font-family:
@@ -61,12 +61,12 @@ a:focus-visible {
 
 .app-frame {
   width: 100%;
-  min-height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
   align-items: safe center;
   justify-content: center;
-  padding: 48px 20px 24px;
+  padding: 40px 20px;
   background: var(--paper);
 }
 
@@ -95,8 +95,8 @@ a:focus-visible {
 
 .panel-heading h1 {
   margin: 0;
-  font-size: 23px;
-  line-height: 1.25;
+  font-size: 28px;
+  line-height: 1.2;
   font-weight: 670;
   letter-spacing: -0.035em;
 }
@@ -179,7 +179,7 @@ a:focus-visible {
 
 .drop-well__title,
 .drop-well__name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 590;
   letter-spacing: -0.02em;
 }
@@ -201,7 +201,7 @@ a:focus-visible {
 .field-label {
   display: block;
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 590;
   text-align: center;
 }
@@ -248,7 +248,7 @@ a:focus-visible {
   border-radius: var(--radius);
   background: var(--button);
   color: #fff;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 510;
   letter-spacing: -0.022em;
   cursor: pointer;
@@ -370,7 +370,7 @@ a:focus-visible {
 .result-shell {
   width: min(1100px, 100%);
   margin: 0 auto;
-  min-height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
   display: grid;
   grid-template-rows: auto 1fr;
   padding: max(16px, calc(env(safe-area-inset-top, 0px) + 36px)) 12px 20px;
@@ -418,8 +418,8 @@ a:focus-visible {
 }
 
 .key-select .key-chip {
-  min-width: 32px;
-  padding: 0 7px;
+  min-width: 36px;
+  padding: 0 6px;
 }
 
 .key-picker {
@@ -442,13 +442,13 @@ a:focus-visible {
 .key-chip {
   position: relative;
   min-width: 44px;
-  height: 36px;
+  height: 40px;
   padding: 0 10px;
   border: 0;
   border-radius: 10px;
   background: transparent;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
@@ -538,7 +538,7 @@ a:focus-visible {
   border-radius: 10px;
   background: transparent;
   color: #4c4c4b;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 520;
   cursor: pointer;
 }
@@ -558,7 +558,7 @@ a:focus-visible {
   border-radius: 10px;
   background: var(--button);
   color: #fdfdfd;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 520;
   text-decoration: none;
 }
@@ -747,7 +747,7 @@ a:focus-visible {
   gap: 3px;
   color: var(--muted);
   text-decoration: none;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 560;
   letter-spacing: 0.02em;
 }
@@ -808,11 +808,6 @@ a:focus-visible {
   accent-color: #151515;
 }
 
-.app-frame--tuner {
-  align-items: flex-start;
-  padding-top: max(72px, calc(50dvh - 250px));
-}
-
 .work-panel--tuner {
   min-height: 360px;
 }
@@ -844,7 +839,7 @@ a:focus-visible {
 
 .tuner-note__name {
   min-width: 1.2em;
-  font-size: 72px;
+  font-size: 64px;
   line-height: 0.9;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -854,12 +849,12 @@ a:focus-visible {
   margin-top: 10px;
   margin-left: 2px;
   color: var(--muted);
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .tuner-note__idle {
   color: #d2d2d7;
-  font-size: 72px;
+  font-size: 64px;
   line-height: 0.9;
 }
 
@@ -871,7 +866,7 @@ a:focus-visible {
   height: 36px;
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .tuner-side.is-true {
@@ -951,7 +946,7 @@ a:focus-visible {
 }
 
 .metro-bpm__num {
-  font-size: 72px;
+  font-size: 64px;
   font-weight: 650;
   letter-spacing: -0.05em;
   line-height: 0.9;
@@ -1027,11 +1022,7 @@ a:focus-visible {
 
 @media (max-width: 640px) {
   .app-frame {
-    padding: 56px 16px 20px;
-  }
-
-  .app-frame--tuner {
-    padding-top: max(56px, calc(50dvh - 230px));
+    padding: 36px 16px;
   }
 
   .work-panel {
@@ -1043,10 +1034,14 @@ a:focus-visible {
     gap: 8px;
   }
 
+  .panel-heading h1 {
+    font-size: 26px;
+  }
+
   .tuner-note__name,
   .tuner-note__idle,
   .metro-bpm__num {
-    font-size: 60px;
+    font-size: 56px;
   }
 
   .result-shell {
