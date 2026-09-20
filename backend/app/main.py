@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import threading
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES
 from .ffmpeg_bin import ffmpeg_executable
 from .instruments import DEFAULT_INSTRUMENT, get_instrument, list_instruments
 from .jobs import Job, store
+from .melody import track_melody, write_notes_midi
 from .midi_io import is_midi, to_concert_midi, to_written_midi
 from .score import demo_scale_musicxml, midi_to_musicxml
 
@@ -248,12 +250,14 @@ def _rescore_locked(job_id: str, instrument_id: str) -> dict:
     )
     spec = _parse_instrument(instrument_id)
     xml_path = job.directory / "score.musicxml"
+    wav_path = job.directory / "audio.wav"
     job.instrument = spec.id
     job.stage = "scoring"
     job.message = f"正在排出{spec.name}谱"
     job.error = None
     store.save(job)
     try:
+        _prepare_score_midi(job, spec, midi_path, wav_path)
         scored = midi_to_musicxml(midi_path, xml_path, Path(job.filename).stem, spec.id)
         job.key_name = scored["key"]
         job.bpm = scored["bpm"]
@@ -275,6 +279,48 @@ def _rescore_locked(job_id: str, instrument_id: str) -> dict:
         ) = previous
         store.save(job)
         raise HTTPException(500, "换乐器失败，请再试一次。") from exc
+
+
+def _prepare_score_midi(job: Job, spec, midi_path: Path, wav_path: Path) -> None:
+    if spec.grand:
+        piano_path = job.directory / "piano.mid"
+        if piano_path.exists():
+            if piano_path.resolve() != midi_path.resolve():
+                shutil.copy2(piano_path, midi_path)
+            return
+        if midi_path.exists() and not wav_path.exists():
+            return
+        if not wav_path.exists():
+            if not midi_path.exists():
+                raise RuntimeError("没有音频，没法排钢琴谱。")
+            return
+        from .transcribe import transcribe_wav
+
+        job.stage = "transcribing"
+        job.message = "正在识别琴键（这一步最慢）"
+        store.save(job)
+        transcribed = transcribe_wav(wav_path, piano_path)
+        job.note_count = transcribed["note_count"]
+        job.pedal_count = transcribed["pedal_count"]
+        store.save(job)
+        if piano_path.resolve() != midi_path.resolve():
+            shutil.copy2(piano_path, midi_path)
+        return
+
+    melody_path = job.directory / "melody.mid"
+    piano_path = job.directory / "piano.mid"
+    if midi_path.exists() and not piano_path.exists() and not melody_path.exists():
+        shutil.copy2(midi_path, piano_path)
+    if wav_path.exists():
+        if not melody_path.exists():
+            job.stage = "transcribing"
+            job.message = "正在听主旋律"
+            store.save(job)
+            notes = track_melody(wav_path)
+            if notes:
+                write_notes_midi(melody_path, notes)
+        if melody_path.exists():
+            shutil.copy2(melody_path, midi_path)
 
 
 def run_job(job_id: str) -> None:
@@ -318,18 +364,8 @@ def _run_job_locked(job: Job) -> None:
             elif job.duration_sec is None:
                 job.duration_sec = 0
 
-            if not midi_path.exists():
-                from .transcribe import transcribe_wav
-
-                job.stage = "transcribing"
-                job.message = "正在识别琴键（这一步最慢）"
-                store.save(job)
-                transcribed = transcribe_wav(wav_path, midi_path)
-                job.note_count = transcribed["note_count"]
-                job.pedal_count = transcribed["pedal_count"]
-                store.save(job)
-
         spec = get_instrument(job.instrument)
+        _prepare_score_midi(job, spec, midi_path, wav_path)
         job.stage = "scoring"
         job.message = f"正在排出{spec.name}谱"
         store.save(job)

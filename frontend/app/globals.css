@@ -26,6 +26,7 @@ html,
 body {
   min-height: 100%;
   margin: 0;
+  overflow-x: hidden;
   padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   background: var(--paper);
   color: var(--ink);
@@ -367,17 +368,19 @@ a:focus-visible {
 }
 
 .result-shell {
-  width: min(1100px, calc(100% - 24px));
+  width: min(1100px, 100%);
   margin: 0 auto;
   min-height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));
   display: grid;
   grid-template-rows: auto 1fr;
-  padding: 44px 0 24px;
+  padding: max(16px, calc(env(safe-area-inset-top, 0px) + 36px)) 12px 20px;
   background: var(--paper);
 }
 
 .result-bar {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -471,19 +474,15 @@ a:focus-visible {
 }
 
 .result-bar__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
   align-items: center;
   gap: 8px;
 }
 
-.result-bar__actions .key-picker {
-  flex: 1 1 100%;
-  justify-content: center;
-  min-height: 36px;
-  padding-top: 0;
-  margin-right: 0;
+.result-bar .key-picker {
+  width: 100%;
+  justify-content: space-evenly;
 }
 
 .text-button {
@@ -919,17 +918,18 @@ a:focus-visible {
 
 @media (min-width: 720px) {
   .result-bar {
-    display: flex;
+    flex-direction: row;
     align-items: center;
     justify-content: space-between;
   }
 
-  .result-bar__actions {
-    justify-content: flex-end;
+  .result-bar .key-picker {
+    width: auto;
+    justify-content: flex-start;
   }
 
-  .result-bar__actions .key-picker {
-    flex: 0 0 auto;
+  .result-bar__actions {
+    justify-content: flex-end;
   }
 
   .score-paper {
@@ -956,5 +956,29 @@ a:focus-visible {
   .tuner-note__idle,
   .metro-bpm__num {
     font-size: 60px;
+  }
+
+  .result-shell {
+    width: 100%;
+    padding: max(12px, calc(env(safe-area-inset-top, 0px) + 36px)) 8px 16px;
+  }
+
+  .key-chip {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 6px;
+  }
+
+  .download-button,
+  .text-button {
+    justify-content: center;
+    width: 100%;
+    height: 40px;
+  }
+
+  .score-paper {
+    border-radius: 10px;
+    padding: 2px 0 10px;
+    min-height: 220px;
   }
 }

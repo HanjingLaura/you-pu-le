@@ -14,7 +14,8 @@ from .instruments import (
     get_instrument,
     music21_instrument,
 )
-from .piano import estimate_bpm, load_notes, prepare_piano, quantize_voice
+from .melody import track_melody
+from .piano import estimate_bpm, fit_duration, load_notes, prepare_piano, quantize_voice
 
 log = logging.getLogger("keyprint")
 
@@ -89,6 +90,7 @@ def midi_to_musicxml(
     xml_path: Path,
     title: str,
     instrument_id: str = DEFAULT_INSTRUMENT,
+    wav_path: Path | None = None,
 ) -> dict:
     spec = get_instrument(instrument_id)
     heading = display_title(title)
@@ -99,8 +101,15 @@ def midi_to_musicxml(
         score = _piano_score(events, detected_key, bpm, heading)
         note_count = sum(len(event.pitches) for event in events)
     else:
-        notes = load_notes(midi_path)
-        bpm = estimate_bpm(notes)
+        notes = []
+        if wav_path and Path(wav_path).exists():
+            try:
+                notes = track_melody(wav_path, spec.sounding_low, spec.sounding_high)
+            except Exception as exc:
+                log.warning("melody tracker failed, using MIDI: %s", exc)
+        if not notes:
+            notes = load_notes(midi_path)
+        bpm = estimate_bpm(notes) if notes else 80.0
         events = quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high)
         detected_key = detect_key([pitch for event in events for pitch in event.pitches])
         score = _single_staff_from_events(events, detected_key, bpm, heading, spec)
@@ -108,6 +117,7 @@ def midi_to_musicxml(
 
     xml_path.parent.mkdir(parents=True, exist_ok=True)
     score.write("musicxml", fp=str(xml_path))
+    _clean_musicxml(xml_path)
 
     return {
         "key": str(_written_key(detected_key, spec)),
@@ -122,11 +132,16 @@ def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
     time_signature = meter.TimeSignature("4/4")
     right = stream.Part(id="P1")
     left = stream.Part(id="P2")
-    right.partName = "钢琴"
-    left.partName = "钢琴"
+    right.partName = ""
+    left.partName = ""
+    right.partAbbreviation = ""
+    left.partAbbreviation = ""
 
     for part in (right, left):
-        part.insert(0, instrument.Piano())
+        piano = instrument.Piano()
+        piano.instrumentName = ""
+        piano.instrumentAbbreviation = ""
+        part.insert(0, piano)
         part.insert(0, copy.deepcopy(detected_key))
         part.insert(0, copy.deepcopy(time_signature))
         part.insert(0, tempo.MetronomeMark(number=bpm))
@@ -144,6 +159,8 @@ def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
     score = stream.Score()
     score.insert(0, metadata.Metadata())
     score.metadata.title = title or "草稿谱"
+    score.metadata.composer = None
+    score.metadata.movementName = None
     score.insert(0, right)
     score.insert(0, left)
     score.insert(0, layout.StaffGroup([right, left], name="Piano", symbol="brace"))
@@ -166,8 +183,12 @@ def _written_melody_pitch(event, spec: InstrumentSpec) -> pitch.Pitch | None:
 
 def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec: InstrumentSpec) -> stream.Score:
     part = stream.Part(id="P1")
-    part.partName = spec.name
-    part.insert(0, music21_instrument(spec))
+    part.partName = ""
+    part.partAbbreviation = ""
+    inst = music21_instrument(spec)
+    inst.instrumentName = ""
+    inst.instrumentAbbreviation = ""
+    part.insert(0, inst)
     part.insert(0, copy.deepcopy(_written_key(detected_key, spec)))
     part.insert(0, meter.TimeSignature("4/4"))
     part.insert(0, tempo.MetronomeMark(number=bpm))
@@ -185,8 +206,29 @@ def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec
     score = stream.Score()
     score.insert(0, metadata.Metadata())
     score.metadata.title = title or "草稿谱"
+    score.metadata.composer = None
+    score.metadata.movementName = None
     score.insert(0, part)
     return score
+
+
+def _rest_pieces(length: float) -> list[float]:
+    remain = max(0.0, round(length * 4) / 4)
+    pieces: list[float] = []
+    while remain >= 0.25 - 1e-9:
+        piece = fit_duration(remain)
+        if piece <= 0:
+            break
+        pieces.append(piece)
+        remain = round((remain - piece) * 4) / 4
+    return pieces
+
+
+def _append_rests(part, length: float) -> None:
+    for quarter_length in _rest_pieces(length):
+        rest = note.Rest()
+        rest.quarterLength = quarter_length
+        part.append(rest)
 
 
 def _write_events(part, events, element_for) -> None:
@@ -195,16 +237,20 @@ def _write_events(part, events, element_for) -> None:
         if event.onset < cursor - 0.001:
             continue
         if event.onset > cursor + 0.001:
-            rest = note.Rest()
-            rest.quarterLength = event.onset - cursor
-            part.append(rest)
+            _append_rests(part, event.onset - cursor)
             cursor = event.onset
         placed = element_for(event)
         if isinstance(placed, note.Rest):
             continue
-        placed.quarterLength = max(0.25, event.duration)
+        legal = fit_duration(max(0.25, float(event.duration)))
+        if legal <= 0:
+            continue
+        placed.quarterLength = legal
         part.append(placed)
         cursor = event.onset + placed.quarterLength
+    leftover = (4.0 - (cursor % 4.0)) % 4.0
+    if leftover >= 0.25 - 1e-9:
+        _append_rests(part, leftover)
 
 
 def _finish_part(part) -> None:
@@ -221,6 +267,17 @@ def _finish_part(part) -> None:
         part.makeAccidentals(inPlace=True)
     except Exception as exc:
         log.warning("makeAccidentals skipped: %s", exc)
+
+
+def _clean_musicxml(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"<creator type=\"composer\">.*?</creator>\s*", "", text, flags=re.DOTALL)
+    text = re.sub(r"<movement-title>.*?</movement-title>\s*", "", text, flags=re.DOTALL)
+    text = re.sub(r"<part-name>.*?</part-name>", "<part-name></part-name>", text)
+    text = re.sub(r"<part-abbreviation>.*?</part-abbreviation>", "<part-abbreviation></part-abbreviation>", text)
+    text = re.sub(r"<instrument-name>.*?</instrument-name>", "<instrument-name></instrument-name>", text)
+    text = re.sub(r"<instrument-abbreviation>.*?</instrument-abbreviation>", "<instrument-abbreviation></instrument-abbreviation>", text)
+    path.write_text(text, encoding="utf-8")
 
 
 def demo_scale_musicxml(instrument_id: str = DEFAULT_INSTRUMENT) -> str:

@@ -178,15 +178,12 @@ export function KeyprintApp() {
     return (
       <div className="result-shell">
         <div className="result-bar">
-          <div>
-            <p className="result-bar__brand">有谱了</p>
-          </div>
+          <InstrumentPicker
+            value={job.instrument || instrumentId}
+            disabled={rescoring}
+            onChange={changeInstrument}
+          />
           <div className="result-bar__actions">
-            <InstrumentPicker
-              value={job.instrument || instrumentId}
-              disabled={rescoring}
-              onChange={changeInstrument}
-            />
             {job.id !== "demo" ? (
               <>
                 <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>

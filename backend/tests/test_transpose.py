@@ -6,6 +6,7 @@ import pretty_midi
 from music21 import chord, clef, converter, note
 
 from app.midi_io import to_concert_midi, to_written_midi
+from app.piano import PianoNote, extract_melody
 from app.score import detect_key, display_title, midi_to_musicxml
 
 
@@ -138,6 +139,37 @@ def test_cello_uses_treble_clef(tmp_path: Path):
 def test_ugly_filename_becomes_draft_title():
     assert display_title("v0200fg10000dagm2ifog65lchoooj3g.mp4") == "草稿谱"
     assert display_title("小星星") == "小星星"
+
+
+def test_extract_melody_prefers_continuous_line():
+    notes = [
+        PianoNote(midi=72, start=0.0, duration=0.4, velocity=88),
+        PianoNote(midi=84, start=0.02, duration=0.08, velocity=50),
+        PianoNote(midi=48, start=0.03, duration=0.09, velocity=40),
+        PianoNote(midi=74, start=0.5, duration=0.4, velocity=86),
+        PianoNote(midi=86, start=0.51, duration=0.08, velocity=48),
+        PianoNote(midi=76, start=1.0, duration=0.4, velocity=90),
+        PianoNote(midi=79, start=1.5, duration=0.4, velocity=87),
+    ]
+    melody = extract_melody(notes, 60, 84)
+    assert [item.midi for item in melody] == [72, 74, 76, 79]
+
+
+def test_score_xml_has_no_chrome_or_illegal_durations(tmp_path: Path):
+    midi_path = _write_midi(tmp_path / "line.mid", [60, 62, 64, 65], bpm=120)
+    xml_path = tmp_path / "line.musicxml"
+    midi_to_musicxml(midi_path, xml_path, "v0200fg10000dagm2ifog65lchoooj3g.mp4", "flute")
+    xml = xml_path.read_text(encoding="utf-8")
+    assert "<work-title>草稿谱</work-title>" in xml
+    assert "Music21" not in xml
+    assert "长笛" not in xml
+    assert "<movement-title>" not in xml
+    assert "tuplet" not in xml
+    assert "time-modification" not in xml
+    score = converter.parse(str(xml_path))
+    legal = {0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0}
+    for item in score.parts[0].flatten().notesAndRests:
+        assert float(item.quarterLength) in legal
 
 
 def test_monophonic_line_has_no_overlapping_notes(tmp_path: Path):

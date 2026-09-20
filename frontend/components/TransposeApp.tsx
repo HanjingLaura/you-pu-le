@@ -172,9 +172,6 @@ export function TransposeApp() {
     return (
       <div className="result-shell">
         <div className="result-bar">
-          <div>
-            <p className="result-bar__brand">移调</p>
-          </div>
           <div className="result-bar__actions">
             <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
               <DownloadSimple className="size-4" />

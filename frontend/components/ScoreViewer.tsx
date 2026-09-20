@@ -34,8 +34,17 @@ export function ScoreViewer({ musicXml }: ScoreViewerProps) {
       });
       await osmd.load(musicXml);
       if (cancelled || !ref.current) return;
+      const rules = osmd.EngravingRules;
+      if (rules) {
+        rules.PageLeftMargin = 1.6;
+        rules.PageRightMargin = 1.6;
+        rules.PageTopMargin = 1.2;
+        rules.PageBottomMargin = 1.4;
+        rules.TitleTopDistance = 0;
+        rules.SystemLeftMargin = 0;
+      }
       const width = ref.current.clientWidth || 320;
-      osmd.zoom = width < 520 ? Math.max(0.55, width / 620) : 1;
+      osmd.zoom = width < 560 ? Math.max(0.7, Math.min(0.92, width / 430)) : 1;
       osmd.render();
     };
 
