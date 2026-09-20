@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { armTunerAudio, stopTunerAudio } from "@/lib/tunerAudio";
 import { detectPitch, pitchFromFrequency, type PitchReading } from "@/lib/pitch";
 
 const A4_DEFAULT = 440;
 
 export function TunerApp() {
-  const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [a4, setA4] = useState(A4_DEFAULT);
   const [reading, setReading] = useState<PitchReading | null>(null);
+  const [listening, setListening] = useState(false);
   const a4Ref = useRef(a4);
   const smoothedRef = useRef<number | null>(null);
 
@@ -18,27 +19,23 @@ export function TunerApp() {
   }, [a4]);
 
   useEffect(() => {
-    if (!listening) return undefined;
-
     let cancelled = false;
-    let context: AudioContext | null = null;
-    let stream: MediaStream | null = null;
     let frame = 0;
 
     const start = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        });
-        context = new AudioContext();
+        const { stream, context } = await armTunerAudio();
+        if (cancelled) return;
         const source = context.createMediaStreamSource(stream);
         const analyser = context.createAnalyser();
         analyser.fftSize = 4096;
         source.connect(analyser);
         const buffer = new Float32Array(analyser.fftSize);
+        setError(null);
+        setListening(true);
 
         const tick = () => {
-          if (cancelled || !context) return;
+          if (cancelled) return;
           analyser.getFloatTimeDomainData(buffer);
           const raw = detectPitch(buffer, context.sampleRate);
           if (raw) {
@@ -55,20 +52,22 @@ export function TunerApp() {
         frame = window.requestAnimationFrame(tick);
       } catch {
         if (!cancelled) {
-          setError("打不开麦克风。请允许浏览器使用麦克风后再试。");
           setListening(false);
+          setError("打不开麦克风。请允许浏览器使用麦克风后再回到这一页。");
         }
       }
     };
 
-    start();
+    void start();
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frame);
-      stream?.getTracks().forEach((track) => track.stop());
-      void context?.close();
+      smoothedRef.current = null;
+      setReading(null);
+      setListening(false);
+      void stopTunerAudio();
     };
-  }, [listening]);
+  }, []);
 
   const cents = reading ? Math.max(-50, Math.min(50, reading.cents)) : 0;
   const inTune = Boolean(reading && Math.abs(reading.cents) <= 8);
@@ -80,7 +79,7 @@ export function TunerApp() {
         <header className="panel-heading">
           <h1>校音</h1>
         </header>
-        <p className="lede">对着麦克风吹或拉一个长音。这是本机实时校音，不上传声音。</p>
+        <p className="lede">对着麦克风吹或拉一个长音。进这一页就开始听，离开就停，声音不上传。</p>
 
         <section className="tuner-stage" aria-live="polite">
           <p className="tuner-note">
@@ -107,7 +106,9 @@ export function TunerApp() {
               ? `${reading.frequency.toFixed(1)} Hz · ${reading.cents > 0 ? "+" : ""}${reading.cents} 音分`
               : listening
                 ? "在听"
-                : "还没开始"}
+                : error
+                  ? "麦克风没开"
+                  : "正在打开麦克风"}
           </p>
         </section>
 
@@ -121,19 +122,6 @@ export function TunerApp() {
             onChange={(event) => setA4(Number(event.target.value))}
           />
         </label>
-
-        <button
-          type="button"
-          className="action-button"
-          onClick={() => {
-            setError(null);
-            setReading(null);
-            smoothedRef.current = null;
-            setListening((current) => !current);
-          }}
-        >
-          <span className="action-button__label">{listening ? "停止" : "开始听"}</span>
-        </button>
 
         {error ? (
           <p className="error-message" role="alert">

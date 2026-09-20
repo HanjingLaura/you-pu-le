@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowsLeftRight, Metronome, MusicNotesSimple, Waveform } from "@phosphor-icons/react";
+import { armTunerAudio } from "@/lib/tunerAudio";
 
 const ITEMS = [
   { href: "/tuner", label: "校音", Icon: Waveform },
@@ -24,6 +25,9 @@ export function AppNav() {
             href={href}
             className={`app-nav__item ${active ? "is-active" : ""}`}
             aria-current={active ? "page" : undefined}
+            onClick={() => {
+              if (href === "/tuner") void armTunerAudio();
+            }}
           >
             <Icon className="app-nav__icon" weight={active ? "fill" : "regular"} />
             <span>{label}</span>
