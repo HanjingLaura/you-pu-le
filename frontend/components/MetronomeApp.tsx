@@ -11,14 +11,45 @@ const METERS: Meter[] = [
   { id: "6/8", beats: 6, accents: [0, 3] },
 ];
 
+function audioContextCtor(): typeof AudioContext | null {
+  const fromWindow = window as Window & { webkitAudioContext?: typeof AudioContext };
+  return window.AudioContext ?? fromWindow.webkitAudioContext ?? null;
+}
+
+function playClick(context: AudioContext, time: number, accent: boolean) {
+  const sampleRate = context.sampleRate;
+  const length = Math.floor(sampleRate * 0.05);
+  const buffer = context.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+  const freq = accent ? 1480 : 980;
+  const amp = accent ? 0.9 : 0.58;
+  for (let index = 0; index < length; index += 1) {
+    const elapsed = index / sampleRate;
+    data[index] = Math.sin(2 * Math.PI * freq * elapsed) * Math.exp(-elapsed * 52) * amp;
+  }
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  gain.gain.setValueAtTime(1, time);
+  source.connect(gain);
+  gain.connect(context.destination);
+  source.start(time);
+}
+
 export function MetronomeApp() {
   const [bpm, setBpm] = useState(96);
   const [meterId, setMeterId] = useState("4/4");
   const [running, setRunning] = useState(false);
   const [beat, setBeat] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const tapsRef = useRef<number[]>([]);
   const bpmRef = useRef(bpm);
   const meterRef = useRef(METERS[2]);
+  const runningRef = useRef(false);
+  const contextRef = useRef<AudioContext | null>(null);
+  const timerRef = useRef(0);
+  const nextTimeRef = useRef(0);
+  const beatIndexRef = useRef(0);
 
   useEffect(() => {
     bpmRef.current = bpm;
@@ -29,45 +60,74 @@ export function MetronomeApp() {
   }, [meterId]);
 
   useEffect(() => {
-    if (!running) return undefined;
+    return () => stopMetronome();
+  }, []);
 
-    const context = new AudioContext();
-    let nextTime = context.currentTime + 0.08;
-    let beatIndex = 0;
-    let timer = 0;
-
-    const click = (time: number, accent: boolean) => {
-      const osc = context.createOscillator();
-      const gain = context.createGain();
-      osc.type = "square";
-      osc.frequency.setValueAtTime(accent ? 1320 : 880, time);
-      gain.gain.setValueAtTime(0.0001, time);
-      gain.gain.exponentialRampToValueAtTime(accent ? 0.22 : 0.12, time + 0.002);
-      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.06);
-      osc.connect(gain);
-      gain.connect(context.destination);
-      osc.start(time);
-      osc.stop(time + 0.07);
-    };
-
-    const schedule = () => {
-      const meter = meterRef.current;
-      while (nextTime < context.currentTime + 0.12) {
-        const current = beatIndex;
-        click(nextTime, meter.accents.includes(current % meter.beats));
-        window.setTimeout(() => setBeat(current % meter.beats), Math.max(0, (nextTime - context.currentTime) * 1000));
-        nextTime += 60 / bpmRef.current;
-        beatIndex += 1;
-      }
-    };
-
-    schedule();
-    timer = window.setInterval(schedule, 25);
-    return () => {
-      window.clearInterval(timer);
+  function stopMetronome() {
+    window.clearInterval(timerRef.current);
+    timerRef.current = 0;
+    const context = contextRef.current;
+    contextRef.current = null;
+    runningRef.current = false;
+    setRunning(false);
+    setBeat(0);
+    if (context && context.state !== "closed") {
       void context.close();
-    };
-  }, [running]);
+    }
+  }
+
+  function schedule() {
+    const context = contextRef.current;
+    if (!context || context.state === "closed") return;
+    if (context.state === "suspended") {
+      void context.resume();
+    }
+    const meter = meterRef.current;
+    while (nextTimeRef.current < context.currentTime + 0.16) {
+      const current = beatIndexRef.current;
+      playClick(context, nextTimeRef.current, meter.accents.includes(current % meter.beats));
+      const shown = current % meter.beats;
+      const delay = Math.max(0, (nextTimeRef.current - context.currentTime) * 1000);
+      window.setTimeout(() => {
+        if (runningRef.current) setBeat(shown);
+      }, delay);
+      nextTimeRef.current += 60 / bpmRef.current;
+      beatIndexRef.current += 1;
+    }
+  }
+
+  function startMetronome() {
+    const Ctor = audioContextCtor();
+    if (!Ctor) {
+      setError("这个浏览器发不了声。");
+      return;
+    }
+    setError(null);
+    const context = new Ctor();
+    contextRef.current = context;
+    if (context.state === "suspended") {
+      void context.resume();
+    }
+    runningRef.current = true;
+    setRunning(true);
+    setBeat(0);
+    beatIndexRef.current = 0;
+    nextTimeRef.current = context.currentTime;
+    // First click must happen in this tap, or iOS keeps the context silent.
+    playClick(context, context.currentTime, true);
+    beatIndexRef.current = 1;
+    nextTimeRef.current = context.currentTime + 60 / bpmRef.current;
+    schedule();
+    timerRef.current = window.setInterval(schedule, 25);
+  }
+
+  function toggleMetronome() {
+    if (runningRef.current) {
+      stopMetronome();
+      return;
+    }
+    startMetronome();
+  }
 
   function clampBpm(value: number) {
     return Math.max(30, Math.min(240, Math.round(value)));
@@ -92,7 +152,7 @@ export function MetronomeApp() {
         <header className="panel-heading">
           <h1>节拍</h1>
         </header>
-        <p className="lede">本机发声，不经过服务器。闪灯节拍器请用手机系统手电筒，这里只做听得见的拍点。</p>
+        <p className="lede">本机发声，不经过服务器。点开始就会响，离开这一页就停。</p>
 
         <section className="metro-stage">
           <p className="metro-bpm">
@@ -150,16 +210,15 @@ export function MetronomeApp() {
           ))}
         </div>
 
-        <button
-          type="button"
-          className="action-button"
-          onClick={() => {
-            setBeat(0);
-            setRunning((current) => !current);
-          }}
-        >
+        <button type="button" className="action-button" onClick={toggleMetronome}>
           <span className="action-button__label">{running ? "停止" : "开始"}</span>
         </button>
+
+        {error ? (
+          <p className="error-message" role="alert">
+            {error}
+          </p>
+        ) : null}
       </main>
     </div>
   );
