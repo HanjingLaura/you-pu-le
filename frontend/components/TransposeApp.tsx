@@ -228,7 +228,6 @@ export function TransposeApp() {
         <header className="panel-heading">
           <h1>移调</h1>
         </header>
-        <p className="lede">把一份谱从一件乐器写成另一件。MIDI 按原乐器的记谱音高理解；音频先按实音识别，再写成目标乐器谱。</p>
 
         <form
           className="work-form"

@@ -79,7 +79,6 @@ export function TunerApp() {
         <header className="panel-heading">
           <h1>校音</h1>
         </header>
-        <p className="lede">对着麦克风吹或拉一个长音。进这一页就开始听，离开就停，声音不上传。</p>
 
         <section className="tuner-stage" aria-live="polite">
           <p className="tuner-note">

@@ -152,7 +152,6 @@ export function MetronomeApp() {
         <header className="panel-heading">
           <h1>节拍</h1>
         </header>
-        <p className="lede">本机发声，不经过服务器。点开始就会响，离开这一页就停。</p>
 
         <section className="metro-stage">
           <p className="metro-bpm">

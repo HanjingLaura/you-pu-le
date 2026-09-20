@@ -224,7 +224,6 @@ export function KeyprintApp() {
         <header className="panel-heading">
           <h1>有谱了</h1>
         </header>
-        <p className="lede">上传钢琴独奏，扒成大谱表草稿。</p>
 
         <form
           className="work-form"

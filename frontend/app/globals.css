@@ -100,15 +100,6 @@ a:focus-visible {
   letter-spacing: -0.035em;
 }
 
-.lede {
-  margin: 14px auto 0;
-  max-width: 22em;
-  color: #4c4c4b;
-  font-size: 14px;
-  line-height: 1.55;
-  text-align: center;
-}
-
 .work-form {
   display: grid;
   gap: 14px;
