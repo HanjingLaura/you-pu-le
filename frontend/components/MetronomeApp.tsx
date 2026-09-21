@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  metronomeContext,
+  playMetronomeClick,
+  suspendMetronomeAudio,
+  unlockMetronomeAudio,
+} from "@/lib/metroAudio";
 
 type Meter = { id: string; beats: number; accents: number[] };
 
@@ -10,31 +16,6 @@ const METERS: Meter[] = [
   { id: "4/4", beats: 4, accents: [0] },
   { id: "6/8", beats: 6, accents: [0, 3] },
 ];
-
-function audioContextCtor(): typeof AudioContext | null {
-  const fromWindow = window as Window & { webkitAudioContext?: typeof AudioContext };
-  return window.AudioContext ?? fromWindow.webkitAudioContext ?? null;
-}
-
-function playClick(context: AudioContext, time: number, accent: boolean) {
-  const sampleRate = context.sampleRate;
-  const length = Math.floor(sampleRate * 0.05);
-  const buffer = context.createBuffer(1, length, sampleRate);
-  const data = buffer.getChannelData(0);
-  const freq = accent ? 1480 : 980;
-  const amp = accent ? 0.9 : 0.58;
-  for (let index = 0; index < length; index += 1) {
-    const elapsed = index / sampleRate;
-    data[index] = Math.sin(2 * Math.PI * freq * elapsed) * Math.exp(-elapsed * 52) * amp;
-  }
-  const source = context.createBufferSource();
-  const gain = context.createGain();
-  source.buffer = buffer;
-  gain.gain.setValueAtTime(1, time);
-  source.connect(gain);
-  gain.connect(context.destination);
-  source.start(time);
-}
 
 export function MetronomeApp() {
   const [bpm, setBpm] = useState(96);
@@ -46,7 +27,6 @@ export function MetronomeApp() {
   const bpmRef = useRef(bpm);
   const meterRef = useRef(METERS[2]);
   const runningRef = useRef(false);
-  const contextRef = useRef<AudioContext | null>(null);
   const timerRef = useRef(0);
   const nextTimeRef = useRef(0);
   const beatIndexRef = useRef(0);
@@ -60,32 +40,30 @@ export function MetronomeApp() {
   }, [meterId]);
 
   useEffect(() => {
-    return () => stopMetronome();
+    return () => {
+      stopMetronome();
+    };
   }, []);
 
   function stopMetronome() {
     window.clearInterval(timerRef.current);
     timerRef.current = 0;
-    const context = contextRef.current;
-    contextRef.current = null;
     runningRef.current = false;
     setRunning(false);
     setBeat(0);
-    if (context && context.state !== "closed") {
-      void context.close();
-    }
+    void suspendMetronomeAudio();
   }
 
   function schedule() {
-    const context = contextRef.current;
-    if (!context || context.state === "closed") return;
+    const context = metronomeContext();
+    if (!context || !runningRef.current) return;
     if (context.state === "suspended") {
       void context.resume();
     }
     const meter = meterRef.current;
-    while (nextTimeRef.current < context.currentTime + 0.16) {
+    while (nextTimeRef.current < context.currentTime + 0.18) {
       const current = beatIndexRef.current;
-      playClick(context, nextTimeRef.current, meter.accents.includes(current % meter.beats));
+      playMetronomeClick(nextTimeRef.current, meter.accents.includes(current % meter.beats));
       const shown = current % meter.beats;
       const delay = Math.max(0, (nextTimeRef.current - context.currentTime) * 1000);
       window.setTimeout(() => {
@@ -96,29 +74,23 @@ export function MetronomeApp() {
     }
   }
 
-  function startMetronome() {
-    const Ctor = audioContextCtor();
-    if (!Ctor) {
-      setError("这个浏览器发不了声。");
-      return;
+  async function startMetronome() {
+    try {
+      const context = await unlockMetronomeAudio();
+      setError(null);
+      runningRef.current = true;
+      setRunning(true);
+      setBeat(0);
+      beatIndexRef.current = 1;
+      nextTimeRef.current = context.currentTime + 60 / bpmRef.current;
+      schedule();
+      window.clearInterval(timerRef.current);
+      timerRef.current = window.setInterval(schedule, 25);
+    } catch (err) {
+      runningRef.current = false;
+      setRunning(false);
+      setError(err instanceof Error ? err.message : "这个浏览器发不了声。");
     }
-    setError(null);
-    const context = new Ctor();
-    contextRef.current = context;
-    if (context.state === "suspended") {
-      void context.resume();
-    }
-    runningRef.current = true;
-    setRunning(true);
-    setBeat(0);
-    beatIndexRef.current = 0;
-    nextTimeRef.current = context.currentTime;
-    // First click must happen in this tap, or iOS keeps the context silent.
-    playClick(context, context.currentTime, true);
-    beatIndexRef.current = 1;
-    nextTimeRef.current = context.currentTime + 60 / bpmRef.current;
-    schedule();
-    timerRef.current = window.setInterval(schedule, 25);
   }
 
   function toggleMetronome() {
@@ -126,7 +98,7 @@ export function MetronomeApp() {
       stopMetronome();
       return;
     }
-    startMetronome();
+    void startMetronome();
   }
 
   function clampBpm(value: number) {
