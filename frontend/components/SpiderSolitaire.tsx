@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const SPIDER_SRC = "/spider/Spider.htm";
+const SPIDER_SRC = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/spider/Spider.htm`;
 const SPIDER_REPO = "https://github.com/lrusso/Spider";
 
 export function SpiderSolitaire() {
@@ -17,12 +17,17 @@ export function SpiderSolitaire() {
 
   useEffect(() => {
     if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     panelRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [close, open]);
 
   return (
@@ -62,7 +67,7 @@ export function SpiderSolitaire() {
               className="spider-frame"
               title="蜘蛛纸牌"
               src={SPIDER_SRC}
-              allow="autoplay"
+              allow="autoplay; fullscreen"
             />
             <p className="spider-credit">
               开源项目{" "}
