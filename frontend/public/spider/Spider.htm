@@ -111,7 +111,7 @@
 
       window.canvasRotated = false
       function updateSpiderRotation() {
-        var rotated = false
+        var rotated = window.innerWidth < window.innerHeight
         window.canvasRotated = rotated
         if (document.body) {
           document.body.classList.toggle("rotated", rotated)
@@ -252,8 +252,8 @@
           this.game.state.add("Gamestate", this.gamestate, false)
 
           var resizeF = function resizeF() {
-            var deviceWidth = window.outerWidth
-            var deviceHeight = window.outerHeight
+            var deviceWidth = window.innerWidth
+            var deviceHeight = window.innerHeight
 
             if (!SimpleGame.myGame.device.desktop) {
               var scaleX = deviceWidth / 880
