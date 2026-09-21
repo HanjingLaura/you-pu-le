@@ -2,54 +2,33 @@ from __future__ import annotations
 
 import copy
 import logging
+import re
 from pathlib import Path
 
-import pretty_midi
-from music21 import chord, clef, converter, instrument, key as keymod
+from music21 import chord, clef, instrument, key as keymod
 from music21 import layout, metadata, meter, note, pitch, stream, tempo
 
 from .instruments import (
     DEFAULT_INSTRUMENT,
     InstrumentSpec,
     get_instrument,
-    music21_clef,
     music21_instrument,
 )
-from .piano import prepare_piano
+from .melody import track_melody
+from .piano import PianoEvent, estimate_bpm, fit_duration, load_notes, prepare_piano, quantize_voice
 
 log = logging.getLogger("keyprint")
 
-
-def _estimate_bpm(midi_path: Path) -> float:
-    midi = pretty_midi.PrettyMIDI(str(midi_path))
-    try:
-        bpm = float(midi.estimate_tempo())
-    except Exception:
-        bpm = 120.0
-    if not bpm or bpm < 40 or bpm > 208:
-        bpm = 120.0
-    return round(bpm)
+_MAJOR = (0, 2, 4, 5, 7, 9, 11)
+_MINOR = (0, 2, 3, 5, 7, 8, 10)
+_UGLY_TITLE = re.compile(r"(?:\d{5,}|[a-f0-9]{12,}|v\d{3,})", re.IGNORECASE)
 
 
-def _rewrite_tempo(midi_path: Path, bpm: float) -> None:
-    source = pretty_midi.PrettyMIDI(str(midi_path))
-    rewritten = pretty_midi.PrettyMIDI(initial_tempo=bpm)
-    for inst in source.instruments:
-        rewritten.instruments.append(inst)
-    rewritten.write(str(midi_path))
-
-
-def _place_pitches(part: stream.Part, pitches, source, offset: float) -> None:
-    if not pitches:
-        return
-    if len(pitches) == 1:
-        placed = note.Note(pitches[0])
-    else:
-        placed = chord.Chord(pitches)
-    placed.duration = copy.deepcopy(source.duration)
-    if hasattr(source, "volume") and source.volume is not None:
-        placed.volume = copy.deepcopy(source.volume)
-    part.insert(offset, placed)
+def display_title(title: str | None) -> str:
+    stem = Path(title or "").stem.strip()
+    if not stem or len(stem) > 18 or _UGLY_TITLE.search(stem):
+        return "草稿谱"
+    return stem
 
 
 def _fold_midi(value: int, low: int | None, high: int | None) -> int:
@@ -63,18 +42,6 @@ def _fold_midi(value: int, low: int | None, high: int | None) -> int:
     return max(low, min(high, folded))
 
 
-def _written_pitches(source, spec: InstrumentSpec) -> list:
-    if isinstance(source, note.Note):
-        values = [source.pitch.midi]
-    else:
-        values = [item.midi for item in source.pitches]
-    written = []
-    for value in values:
-        folded = _fold_midi(value, spec.sounding_low, spec.sounding_high)
-        written.append(pitch.Pitch(midi=folded + spec.write_semitones))
-    return written
-
-
 def _written_key(detected_key, spec: InstrumentSpec):
     if not spec.write_semitones:
         return detected_key
@@ -84,41 +51,73 @@ def _written_key(detected_key, spec: InstrumentSpec):
         return detected_key
 
 
+def _key_from_pc(pc: int, mode: str) -> keymod.Key:
+    name = pitch.Pitch(midi=60 + (pc % 12)).name
+    return keymod.Key(name, mode)
+
+
+def _fits_mode(unique: set[int], tonic: int, intervals: tuple[int, ...]) -> bool:
+    scale = {(tonic + step) % 12 for step in intervals}
+    return bool(unique) and unique <= scale
+
+
+def detect_key(midis: list[int]):
+    if not midis:
+        return keymod.Key("C")
+    unique = {value % 12 for value in midis}
+    bass = min(midis) % 12
+    if _fits_mode(unique, bass, _MAJOR):
+        return _key_from_pc(bass, "major")
+    if _fits_mode(unique, bass, _MINOR):
+        return _key_from_pc(bass, "minor")
+
+    probe = stream.Stream()
+    for index, midi_number in enumerate(midis[:64]):
+        probe.insert(index * 0.5, note.Note(midi_number, quarterLength=0.5))
+    try:
+        analyzed = probe.analyze("key")
+    except Exception:
+        analyzed = keymod.Key("C")
+    if analyzed.mode == "minor":
+        relative = (analyzed.tonic.midi + 3) % 12
+        if _fits_mode(unique, relative, _MAJOR):
+            return _key_from_pc(relative, "major")
+    return analyzed
+
+
 def midi_to_musicxml(
     midi_path: Path,
     xml_path: Path,
     title: str,
     instrument_id: str = DEFAULT_INSTRUMENT,
+    wav_path: Path | None = None,
 ) -> dict:
     spec = get_instrument(instrument_id)
-    bpm = _estimate_bpm(midi_path)
+    heading = display_title(title)
 
     if spec.grand:
-        events, bpm = prepare_piano(midi_path, bpm)
-        try:
-            detected_key = _key_from_events(events)
-        except Exception:
-            detected_key = keymod.Key("C")
-        score = _piano_score(events, detected_key, bpm, title)
+        events, bpm = prepare_piano(midi_path)
+        detected_key = detect_key([pitch for event in events for pitch in event.pitches])
+        score = _piano_score(events, detected_key, bpm, heading)
         note_count = sum(len(event.pitches) for event in events)
     else:
-        _rewrite_tempo(midi_path, bpm)
-        raw = converter.parse(str(midi_path))
-        raw.quantize([8, 6, 4, 3], processOffsets=True, processDurations=True, inPlace=True)
-        try:
-            detected_key = raw.analyze("key")
-        except Exception:
-            detected_key = keymod.Key("C")
-        score = _single_staff_score(raw, detected_key, bpm, title, spec)
-        note_count = len(list(raw.flatten().notes))
-
-    try:
-        score.makeMeasures(inPlace=True)
-    except Exception as exc:
-        log.warning("makeNotation skipped: %s", exc)
+        notes = []
+        if wav_path and Path(wav_path).exists():
+            try:
+                notes = track_melody(wav_path, spec.sounding_low, spec.sounding_high)
+            except Exception as exc:
+                log.warning("melody tracker failed, using MIDI: %s", exc)
+        if not notes:
+            notes = load_notes(midi_path)
+        bpm = estimate_bpm(notes) if notes else 80.0
+        events = _trim_leading_measures(quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high))
+        detected_key = detect_key([pitch for event in events for pitch in event.pitches])
+        score = _single_staff_from_events(events, detected_key, bpm, heading, spec)
+        note_count = len(events)
 
     xml_path.parent.mkdir(parents=True, exist_ok=True)
     score.write("musicxml", fp=str(xml_path))
+    _clean_musicxml(xml_path)
 
     return {
         "key": str(_written_key(detected_key, spec)),
@@ -129,26 +128,20 @@ def midi_to_musicxml(
     }
 
 
-def _key_from_events(events) -> keymod.Key:
-    probe = stream.Stream()
-    for event in events:
-        for midi_number in event.pitches:
-            probe.insert(event.onset, note.Note(midi_number, quarterLength=max(0.25, event.duration)))
-    try:
-        return probe.analyze("key")
-    except Exception:
-        return keymod.Key("C")
-
-
 def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
     time_signature = meter.TimeSignature("4/4")
     right = stream.Part(id="P1")
     left = stream.Part(id="P2")
-    right.partName = "钢琴"
-    left.partName = "钢琴"
+    right.partName = ""
+    left.partName = ""
+    right.partAbbreviation = ""
+    left.partAbbreviation = ""
 
     for part in (right, left):
-        part.insert(0, instrument.Piano())
+        piano = instrument.Piano()
+        piano.instrumentName = ""
+        piano.instrumentAbbreviation = ""
+        part.insert(0, piano)
         part.insert(0, copy.deepcopy(detected_key))
         part.insert(0, copy.deepcopy(time_signature))
         part.insert(0, tempo.MetronomeMark(number=bpm))
@@ -156,68 +149,152 @@ def _piano_score(events, detected_key, bpm: float, title: str) -> stream.Score:
     right.insert(0, clef.TrebleClef())
     left.insert(0, clef.BassClef())
 
-    for event in events:
-        target = right if event.hand == "right" else left
-        pitches = [pitch.Pitch(midi=value) for value in event.pitches]
-        if not pitches:
-            continue
-        if len(pitches) == 1:
-            placed = note.Note(pitches[0])
-        else:
-            placed = chord.Chord(pitches)
-        placed.quarterLength = event.duration
-        target.insert(event.onset, placed)
-
-    for part in (right, left):
-        try:
-            part.makeRests(fillGaps=True, inPlace=True)
-            part.makeBeams(inPlace=True)
-            part.makeAccidentals(inPlace=True)
-        except Exception as exc:
-            log.warning("piano notation cleanup skipped: %s", exc)
+    right_events = [event for event in events if event.hand == "right"]
+    left_events = [event for event in events if event.hand == "left"]
+    _write_events(right, right_events, _piano_element)
+    _write_events(left, left_events, _piano_element)
+    _finish_part(right)
+    _finish_part(left)
 
     score = stream.Score()
     score.insert(0, metadata.Metadata())
     score.metadata.title = title or "草稿谱"
-    score.metadata.composer = "有谱了 草稿谱 · 钢琴"
+    score.metadata.composer = None
+    score.metadata.movementName = None
     score.insert(0, right)
     score.insert(0, left)
     score.insert(0, layout.StaffGroup([right, left], name="Piano", symbol="brace"))
     return score
 
 
-def _single_staff_score(raw, detected_key, bpm: float, title: str, spec: InstrumentSpec) -> stream.Score:
+def _piano_element(event) -> note.NotRest:
+    pitches = [pitch.Pitch(midi=value) for value in event.pitches]
+    if len(pitches) == 1:
+        return note.Note(pitches[0])
+    return chord.Chord(pitches)
+
+
+def _written_melody_pitch(event, spec: InstrumentSpec) -> pitch.Pitch | None:
+    if not event.pitches:
+        return None
+    folded = _fold_midi(event.pitches[0], spec.sounding_low, spec.sounding_high)
+    return pitch.Pitch(midi=folded + spec.write_semitones)
+
+
+def _single_staff_from_events(events, detected_key, bpm: float, title: str, spec: InstrumentSpec) -> stream.Score:
     part = stream.Part(id="P1")
-    part.partName = spec.name
-    part.insert(0, music21_instrument(spec))
+    part.partName = ""
+    part.partAbbreviation = ""
+    inst = music21_instrument(spec)
+    inst.instrumentName = ""
+    inst.instrumentAbbreviation = ""
+    part.insert(0, inst)
     part.insert(0, copy.deepcopy(_written_key(detected_key, spec)))
     part.insert(0, meter.TimeSignature("4/4"))
     part.insert(0, tempo.MetronomeMark(number=bpm))
-    part.insert(0, music21_clef(spec))
+    part.insert(0, clef.TrebleClef())
 
-    for el in raw.flatten().notes:
-        offset = float(el.offset)
-        written = _written_pitches(el, spec)
-        if not written:
-            continue
-        if len(written) == 1:
-            placed = note.Note(written[0])
-        else:
-            placed = chord.Chord(written)
-        placed.duration = copy.deepcopy(el.duration)
-        part.insert(offset, placed)
+    def melody_element(event):
+        written = _written_melody_pitch(event, spec)
+        if written is None:
+            return note.Rest()
+        return note.Note(written)
 
-    try:
-        part.makeRests(fillGaps=True, inPlace=True)
-    except Exception as exc:
-        log.warning("makeRests skipped: %s", exc)
+    _write_events(part, events, melody_element)
+    _finish_part(part)
 
     score = stream.Score()
     score.insert(0, metadata.Metadata())
     score.metadata.title = title or "草稿谱"
-    score.metadata.composer = f"有谱了 草稿谱 · {spec.name}（{spec.key_label}）"
+    score.metadata.composer = None
+    score.metadata.movementName = None
     score.insert(0, part)
     return score
+
+
+def _trim_leading_measures(events: list) -> list:
+    if not events:
+        return events
+    shift = int(events[0].onset // 4) * 4
+    if shift <= 0:
+        return events
+    return [
+        PianoEvent(
+            onset=event.onset - shift,
+            duration=event.duration,
+            pitches=list(event.pitches),
+            hand=event.hand,
+        )
+        for event in events
+    ]
+
+
+def _rest_pieces(length: float) -> list[float]:
+    remain = max(0.0, round(length * 4) / 4)
+    pieces: list[float] = []
+    while remain >= 0.25 - 1e-9:
+        piece = fit_duration(remain)
+        if piece <= 0:
+            break
+        pieces.append(piece)
+        remain = round((remain - piece) * 4) / 4
+    return pieces
+
+
+def _append_rests(part, length: float) -> None:
+    for quarter_length in _rest_pieces(length):
+        rest = note.Rest()
+        rest.quarterLength = quarter_length
+        part.append(rest)
+
+
+def _write_events(part, events, element_for) -> None:
+    cursor = 0.0
+    for event in events:
+        if event.onset < cursor - 0.001:
+            continue
+        if event.onset > cursor + 0.001:
+            _append_rests(part, event.onset - cursor)
+            cursor = event.onset
+        placed = element_for(event)
+        if isinstance(placed, note.Rest):
+            continue
+        legal = fit_duration(max(0.25, float(event.duration)))
+        if legal <= 0:
+            continue
+        placed.quarterLength = legal
+        part.append(placed)
+        cursor = event.onset + placed.quarterLength
+    leftover = (4.0 - (cursor % 4.0)) % 4.0
+    if leftover >= 0.25 - 1e-9:
+        _append_rests(part, leftover)
+
+
+def _finish_part(part) -> None:
+    try:
+        part.makeMeasures(inPlace=True)
+    except Exception as exc:
+        log.warning("makeMeasures skipped: %s", exc)
+        return
+    try:
+        part.makeBeams(inPlace=True)
+    except Exception as exc:
+        log.warning("makeBeams skipped: %s", exc)
+    try:
+        part.makeAccidentals(inPlace=True)
+    except Exception as exc:
+        log.warning("makeAccidentals skipped: %s", exc)
+
+
+def _clean_musicxml(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"<creator type=\"composer\">.*?</creator>\s*", "", text, flags=re.DOTALL)
+    text = re.sub(r"<movement-title>.*?</movement-title>\s*", "", text, flags=re.DOTALL)
+    text = re.sub(r"<part-name>.*?</part-name>", "<part-name></part-name>", text)
+    text = re.sub(r"<part-abbreviation>.*?</part-abbreviation>", "<part-abbreviation></part-abbreviation>", text)
+    text = re.sub(r"<instrument-name>.*?</instrument-name>", "<instrument-name></instrument-name>", text)
+    text = re.sub(r"<instrument-abbreviation>.*?</instrument-abbreviation>", "<instrument-abbreviation></instrument-abbreviation>", text)
+    path.write_text(text, encoding="utf-8")
 
 
 def demo_scale_musicxml(instrument_id: str = DEFAULT_INSTRUMENT) -> str:
@@ -255,7 +332,7 @@ def demo_scale_musicxml(instrument_id: str = DEFAULT_INSTRUMENT) -> str:
         part.insert(0, written_key)
         part.insert(0, meter.TimeSignature("4/4"))
         part.insert(0, tempo.MetronomeMark(number=96))
-        part.insert(0, music21_clef(spec))
+        part.insert(0, clef.TrebleClef())
         concert = [60, 62, 64, 65, 67, 69, 71, 72]
         for index, midi_number in enumerate(concert):
             folded = _fold_midi(midi_number, spec.sounding_low, spec.sounding_high)

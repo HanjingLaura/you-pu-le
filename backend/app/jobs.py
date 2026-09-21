@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -10,6 +12,12 @@ from typing import Literal
 
 from .config import DATA_DIR
 from .instruments import DEFAULT_INSTRUMENT
+
+JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def is_job_id(job_id: str) -> bool:
+    return bool(JOB_ID_RE.fullmatch(job_id))
 
 Stage = Literal[
     "queued",
@@ -37,6 +45,7 @@ class Job:
     bpm: float | None = None
     source_url: str | None = None
     instrument: str = DEFAULT_INSTRUMENT
+    source_instrument: str = DEFAULT_INSTRUMENT
 
     @property
     def directory(self) -> Path:
@@ -58,6 +67,7 @@ class Job:
             "key_name": self.key_name,
             "bpm": self.bpm,
             "instrument": self.instrument,
+            "source_instrument": self.source_instrument,
             "midi_url": f"/jobs/{self.id}/midi" if self.stage == "done" else None,
             "musicxml_url": f"/jobs/{self.id}/musicxml" if self.stage == "done" else None,
         }
@@ -78,6 +88,7 @@ class Job:
             bpm=data.get("bpm"),
             source_url=data.get("source_url"),
             instrument=data.get("instrument") or DEFAULT_INSTRUMENT,
+            source_instrument=data.get("source_instrument") or DEFAULT_INSTRUMENT,
         )
 
 
@@ -138,12 +149,19 @@ class JobStore:
             message="草稿谱已生成" if done else "正在排谱",
         )
 
-    def create(self, filename: str, source_url: str | None = None, instrument: str = DEFAULT_INSTRUMENT) -> Job:
+    def create(
+        self,
+        filename: str,
+        source_url: str | None = None,
+        instrument: str = DEFAULT_INSTRUMENT,
+        source_instrument: str = DEFAULT_INSTRUMENT,
+    ) -> Job:
         job = Job(
             id=uuid.uuid4().hex,
             filename=filename,
             source_url=source_url,
             instrument=instrument,
+            source_instrument=source_instrument,
         )
         with self._lock:
             self._jobs[job.id] = job
@@ -155,7 +173,19 @@ class JobStore:
             self._jobs[job.id] = job
         self._write(job)
 
+    def purge(self, job_id: str) -> None:
+        if not is_job_id(job_id):
+            return
+        with self._lock:
+            self._jobs.pop(job_id, None)
+        folder = DATA_DIR / job_id
+        resolved = folder.resolve()
+        if resolved.exists() and resolved.parent == DATA_DIR.resolve():
+            shutil.rmtree(resolved, ignore_errors=True)
+
     def get(self, job_id: str) -> Job | None:
+        if not is_job_id(job_id):
+            return None
         with self._lock:
             cached = self._jobs.get(job_id)
         if cached:

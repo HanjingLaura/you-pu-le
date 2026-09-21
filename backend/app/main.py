@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
+import shutil
+import tempfile
 import threading
 from pathlib import Path
 
@@ -8,15 +12,10 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 
-from .audio import AudioError, extract_wav
-from .download import download_source, validate_url
-from .checkpoint import checkpoint_ready, ensure_checkpoint
-from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES
-from .ffmpeg_bin import ffmpeg_executable
+from .config import ALLOWED_SUFFIXES, MAX_UPLOAD_BYTES, SCORE_SUFFIXES
 from .instruments import DEFAULT_INSTRUMENT, get_instrument, list_instruments
 from .jobs import Job, store
-from .score import demo_scale_musicxml, midi_to_musicxml
-from .transcribe import choose_device, model_loaded, transcribe_wav
+from .keys import TransposeError, read_keys
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("keyprint")
@@ -25,7 +24,13 @@ log = logging.getLogger("keyprint")
 app = FastAPI(title="有谱了", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://hanjing-laura.vercel.app",
+        "https://youpule.vercel.app",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,8 +39,43 @@ app.add_middleware(
 _JOB_LOCK = threading.Lock()
 
 
+def _on_vercel() -> bool:
+    return bool(os.environ.get("VERCEL"))
+
+
+def _detect_written_key(path: Path) -> str:
+    if _on_vercel():
+        from .lite_transpose import detect_written_key_lite
+
+        return detect_written_key_lite(path)
+    from .transpose import detect_written_key, load_score
+
+    return detect_written_key(load_score(path))
+
+
+def _transpose_score_file(
+    source: Path,
+    xml_path: Path,
+    midi_path: Path,
+    from_key: str,
+    to_key: str,
+    title: str | None = None,
+) -> dict:
+    if _on_vercel():
+        from .lite_transpose import transpose_score_file_lite
+
+        return transpose_score_file_lite(source, xml_path, midi_path, from_key, to_key, title)
+    from .transpose import transpose_score_file
+
+    return transpose_score_file(source, xml_path, midi_path, from_key, to_key, title)
+
+
 @app.on_event("startup")
 def warmup() -> None:
+    if _on_vercel():
+        return
+    from .ffmpeg_bin import ffmpeg_executable
+
     ffmpeg_executable()
     threading.Thread(target=_warmup_checkpoint, daemon=True).start()
     threading.Thread(target=_resume_unfinished_jobs, daemon=True).start()
@@ -43,6 +83,8 @@ def warmup() -> None:
 
 def _warmup_checkpoint() -> None:
     try:
+        from .checkpoint import ensure_checkpoint
+
         ensure_checkpoint()
     except Exception:
         log.exception("Checkpoint warmup failed")
@@ -61,19 +103,41 @@ def root() -> dict:
 
 @app.get("/health")
 def health() -> dict:
+    if _on_vercel():
+        return {
+            "ok": True,
+            "ffmpeg": False,
+            "ffmpeg_path": None,
+            "device": "vercel",
+            "checkpoint_ready": False,
+            "model_loaded": False,
+        }
     try:
+        from .ffmpeg_bin import ffmpeg_executable
+
         ffmpeg_path = ffmpeg_executable()
         ffmpeg_ok = True
     except Exception:
         ffmpeg_path = None
         ffmpeg_ok = False
+    try:
+        from .checkpoint import checkpoint_ready
+        from .transcribe import choose_device, model_loaded
+
+        device = choose_device()
+        loaded = model_loaded()
+        ready = checkpoint_ready()
+    except Exception:
+        device = "unavailable"
+        loaded = False
+        ready = False
     return {
         "ok": ffmpeg_ok,
         "ffmpeg": ffmpeg_ok,
         "ffmpeg_path": ffmpeg_path,
-        "device": choose_device(),
-        "checkpoint_ready": checkpoint_ready(),
-        "model_loaded": model_loaded(),
+        "device": device,
+        "checkpoint_ready": ready,
+        "model_loaded": loaded,
     }
 
 
@@ -89,44 +153,180 @@ def instruments() -> dict:
     return {"default": DEFAULT_INSTRUMENT, "items": list_instruments()}
 
 
-@app.post("/jobs")
-async def create_job(
-    background_tasks: BackgroundTasks,
-    file: UploadFile | None = File(None),
-    url: str | None = Form(None),
-    instrument: str | None = Form(None),
-) -> dict:
-    spec = _parse_instrument(instrument)
-    source_url = url.strip() if url else None
-    if file and file.filename:
-        filename = file.filename
-        suffix = Path(filename).suffix.lower()
-        if suffix not in ALLOWED_SUFFIXES:
-            raise HTTPException(400, "只接受视频或音频：mp4 / mov / webm / wav / mp3 / m4a / flac。")
-
-        job = store.create(filename, instrument=spec.id)
-        upload_path = job.directory / f"source{suffix}"
-        size = 0
-        with upload_path.open("wb") as handle:
+async def _read_upload(file: UploadFile, allowed: set[str], dest: Path) -> Path:
+    if not file.filename:
+        raise HTTPException(400, "请上传谱子。")
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in allowed:
+        raise HTTPException(400, "请上传 MusicXML 或 MIDI。")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    path = dest.with_suffix(suffix)
+    size = 0
+    try:
+        with path.open("wb") as handle:
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
                 size += len(chunk)
                 if size > MAX_UPLOAD_BYTES:
-                    upload_path.unlink(missing_ok=True)
-                    raise HTTPException(400, "文件超过 80MB。请先剪短或压一下。")
+                    raise HTTPException(400, "文件超过 80MB。")
                 handle.write(chunk)
-        if size == 0:
-            raise HTTPException(400, "上传是空文件。")
+    except HTTPException:
+        path.unlink(missing_ok=True)
+        raise
+    if size == 0:
+        path.unlink(missing_ok=True)
+        raise HTTPException(400, "上传是空文件。")
+    return path
+
+
+@app.post("/key-transpose/inspect")
+async def inspect_key_transpose(file: UploadFile = File(...)) -> dict:
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            path = await _read_upload(file, SCORE_SUFFIXES, Path(tmp) / "score")
+            key_id = _detect_written_key(path)
+        except TransposeError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            log.exception("Key inspect failed")
+            raise HTTPException(500, "读不了这份谱。请上传 MusicXML 或 MIDI。") from exc
+    return {"key": key_id}
+
+
+@app.post("/key-transpose")
+async def create_key_transpose(
+    file: UploadFile = File(...),
+    from_key: str = Form(...),
+    to_key: str = Form(...),
+) -> dict:
+    job = store.create(file.filename or "score", instrument="piano")
+    try:
+        source = await _read_upload(file, SCORE_SUFFIXES, job.directory / "source")
+        result = _transpose_score_file(
+            source,
+            job.directory / "score.musicxml",
+            job.directory / "score.mid",
+            from_key,
+            to_key,
+            Path(job.filename).stem,
+        )
+    except TransposeError as exc:
+        store.purge(job.id)
+        raise HTTPException(400, str(exc)) from exc
+    except HTTPException:
+        store.purge(job.id)
+        raise
+    except Exception as exc:
+        log.exception("Key transpose failed")
+        store.purge(job.id)
+        raise HTTPException(500, "移调失败，请再试一次。") from exc
+    job.key_name = result["key"]
+    job.note_count = result["note_count"]
+    job.stage = "done"
+    job.message = "已移调"
+    job.error = None
+    store.save(job)
+    payload = job.to_dict()
+    payload.update({"from_key": result["from_key"], "to_key": result["to_key"]})
+    return payload
+
+
+@app.post("/key-transpose/{job_id}")
+def redo_key_transpose(job_id: str, to_key: str = Form(...)) -> dict:
+    job = store.get(job_id)
+    if not job:
+        raise HTTPException(404, "找不到这个任务。")
+    sources = list(job.directory.glob("source.*"))
+    if not sources:
+        raise HTTPException(409, "找不到原来的谱。")
+    keys = read_keys(job.directory)
+    from_key = keys.get("from_key")
+    if not from_key:
+        raise HTTPException(409, "找不到原来的调。")
+    try:
+        result = _transpose_score_file(
+            sources[0],
+            job.directory / "score.musicxml",
+            job.directory / "score.mid",
+            from_key,
+            to_key,
+            Path(job.filename).stem,
+        )
+    except TransposeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        log.exception("Key re-transpose failed")
+        raise HTTPException(500, "移调失败，请再试一次。") from exc
+    job.key_name = result["key"]
+    job.note_count = result["note_count"]
+    job.stage = "done"
+    job.message = "已移调"
+    job.error = None
+    store.save(job)
+    payload = job.to_dict()
+    payload.update({"from_key": result["from_key"], "to_key": result["to_key"]})
+    return payload
+
+
+@app.post("/jobs")
+async def create_job(
+    background_tasks: BackgroundTasks,
+    file: UploadFile | None = File(None),
+    url: str | None = Form(None),
+    instrument: str | None = Form(None),
+    source_instrument: str | None = Form(None),
+) -> dict:
+    if _on_vercel():
+        raise HTTPException(501, "线上先用校音、节拍和移调。扒谱请在电脑上打开。")
+    from .audio import AudioError
+    from .download import validate_url
+
+    spec = _parse_instrument(instrument)
+    source_spec = _parse_instrument(source_instrument)
+    source_url = url.strip() if url else None
+    if file and file.filename:
+        filename = file.filename
+        suffix = Path(filename).suffix.lower()
+        if suffix not in ALLOWED_SUFFIXES:
+            raise HTTPException(400, "只接受视频、音频或 MIDI：mp4 / mov / webm / wav / mp3 / m4a / flac / mid。")
+
+        job = store.create(
+            filename,
+            instrument=spec.id,
+            source_instrument=source_spec.id,
+        )
+        upload_path = job.directory / f"source{suffix}"
+        size = 0
+        try:
+            with upload_path.open("wb") as handle:
+                while True:
+                    chunk = await file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        raise HTTPException(400, "文件超过 80MB。请先剪短或压一下。")
+                    handle.write(chunk)
+            if size == 0:
+                raise HTTPException(400, "上传是空文件。")
+        except Exception:
+            store.purge(job.id)
+            raise
     elif source_url:
         try:
             validate_url(source_url)
         except AudioError as exc:
             raise HTTPException(400, str(exc)) from exc
-        job = store.create(source_url, source_url=source_url, instrument=spec.id)
+        job = store.create(
+            source_url,
+            source_url=source_url,
+            instrument=spec.id,
+            source_instrument=source_spec.id,
+        )
     else:
-        raise HTTPException(400, "请上传视频 / 音频，或粘贴链接。")
+        raise HTTPException(400, "请上传视频 / 音频 / MIDI，或粘贴链接。")
 
     background_tasks.add_task(run_job, job.id)
     store.save(job)
@@ -135,6 +335,10 @@ async def create_job(
 
 @app.get("/demo/musicxml", response_class=PlainTextResponse)
 def demo_musicxml(instrument: str | None = None) -> str:
+    if _on_vercel():
+        raise HTTPException(501, "线上先用校音、节拍和移调。")
+    from .score import demo_scale_musicxml
+
     spec = _parse_instrument(instrument)
     return demo_scale_musicxml(spec.id)
 
@@ -147,13 +351,28 @@ def get_job(job_id: str) -> dict:
     return job.to_dict()
 
 
+def _download_stem(filename: str) -> str:
+    stem = Path(filename).stem
+    cleaned = re.sub(r"[^\w\u4e00-\u9fff\-]+", "_", stem)[:80]
+    return cleaned or "score"
+
+
 @app.get("/jobs/{job_id}/midi")
 def download_midi(job_id: str) -> FileResponse:
     job = _require_done(job_id)
-    path = job.directory / "score.mid"
-    if not path.exists():
+    concert = job.directory / "score.mid"
+    if not concert.exists():
         raise HTTPException(404, "MIDI 还没生成。")
-    download_name = Path(job.filename).stem + ".mid"
+    path = concert
+    if not _on_vercel():
+        from .midi_io import to_written_midi
+
+        spec = get_instrument(job.instrument)
+        if spec.write_semitones:
+            written = job.directory / "score-written.mid"
+            to_written_midi(concert, written, spec.id)
+            path = written
+    download_name = _download_stem(job.filename) + ".mid"
     return FileResponse(path, filename=download_name, media_type="audio/midi")
 
 
@@ -163,7 +382,7 @@ def download_musicxml(job_id: str) -> FileResponse:
     path = job.directory / "score.musicxml"
     if not path.exists():
         raise HTTPException(404, "乐谱还没生成。")
-    download_name = Path(job.filename).stem + ".musicxml"
+    download_name = _download_stem(job.filename) + ".musicxml"
     return FileResponse(
         path,
         filename=download_name,
@@ -196,6 +415,10 @@ def _require_done(job_id: str) -> Job:
 
 
 def _rescore_locked(job_id: str, instrument_id: str) -> dict:
+    if _on_vercel():
+        raise HTTPException(501, "线上先用校音、节拍和移调。扒谱请在电脑上打开。")
+    from .score import midi_to_musicxml
+
     job = store.get(job_id)
     if not job:
         raise HTTPException(404, "找不到这个任务。")
@@ -213,12 +436,14 @@ def _rescore_locked(job_id: str, instrument_id: str) -> dict:
     )
     spec = _parse_instrument(instrument_id)
     xml_path = job.directory / "score.musicxml"
+    wav_path = job.directory / "audio.wav"
     job.instrument = spec.id
     job.stage = "scoring"
     job.message = f"正在排出{spec.name}谱"
     job.error = None
     store.save(job)
     try:
+        _prepare_score_midi(job, spec, midi_path, wav_path)
         scored = midi_to_musicxml(midi_path, xml_path, Path(job.filename).stem, spec.id)
         job.key_name = scored["key"]
         job.bpm = scored["bpm"]
@@ -242,6 +467,50 @@ def _rescore_locked(job_id: str, instrument_id: str) -> dict:
         raise HTTPException(500, "换乐器失败，请再试一次。") from exc
 
 
+def _prepare_score_midi(job: Job, spec, midi_path: Path, wav_path: Path) -> None:
+    from .melody import track_melody, write_notes_midi
+
+    if spec.grand:
+        piano_path = job.directory / "piano.mid"
+        if piano_path.exists():
+            if piano_path.resolve() != midi_path.resolve():
+                shutil.copy2(piano_path, midi_path)
+            return
+        if midi_path.exists() and not wav_path.exists():
+            return
+        if not wav_path.exists():
+            if not midi_path.exists():
+                raise RuntimeError("没有音频，没法排钢琴谱。")
+            return
+        from .transcribe import transcribe_wav
+
+        job.stage = "transcribing"
+        job.message = "正在识别琴键（这一步最慢）"
+        store.save(job)
+        transcribed = transcribe_wav(wav_path, piano_path)
+        job.note_count = transcribed["note_count"]
+        job.pedal_count = transcribed["pedal_count"]
+        store.save(job)
+        if piano_path.resolve() != midi_path.resolve():
+            shutil.copy2(piano_path, midi_path)
+        return
+
+    melody_path = job.directory / "melody.mid"
+    piano_path = job.directory / "piano.mid"
+    if midi_path.exists() and not piano_path.exists() and not melody_path.exists():
+        shutil.copy2(midi_path, piano_path)
+    if wav_path.exists():
+        if not melody_path.exists():
+            job.stage = "transcribing"
+            job.message = "正在听主旋律"
+            store.save(job)
+            notes = track_melody(wav_path)
+            if notes:
+                write_notes_midi(melody_path, notes)
+        if melody_path.exists():
+            shutil.copy2(melody_path, midi_path)
+
+
 def run_job(job_id: str) -> None:
     job = store.get(job_id)
     if not job:
@@ -251,6 +520,11 @@ def run_job(job_id: str) -> None:
 
 
 def _run_job_locked(job: Job) -> None:
+    from .audio import AudioError, extract_wav
+    from .download import download_source
+    from .midi_io import is_midi, to_concert_midi
+    from .score import midi_to_musicxml
+
     try:
         sources = list(job.directory.glob("source.*"))
         if not sources and job.source_url:
@@ -265,26 +539,26 @@ def _run_job_locked(job: Job) -> None:
         midi_path = job.directory / "score.mid"
         xml_path = job.directory / "score.musicxml"
 
-        if not wav_path.exists():
-            job.stage = "extracting"
-            job.message = "正在抽出音频"
+        if is_midi(source):
+            job.stage = "scoring"
+            job.message = "正在按乐器移调"
             store.save(job)
-            duration = extract_wav(source, wav_path)
+            duration = to_concert_midi(source, midi_path, job.source_instrument)
             job.duration_sec = round(duration, 2)
             store.save(job)
-        elif job.duration_sec is None:
-            job.duration_sec = 0
-
-        if not midi_path.exists():
-            job.stage = "transcribing"
-            job.message = "正在识别琴键（这一步最慢）"
-            store.save(job)
-            transcribed = transcribe_wav(wav_path, midi_path)
-            job.note_count = transcribed["note_count"]
-            job.pedal_count = transcribed["pedal_count"]
-            store.save(job)
+        else:
+            if not wav_path.exists():
+                job.stage = "extracting"
+                job.message = "正在抽出音频"
+                store.save(job)
+                duration = extract_wav(source, wav_path)
+                job.duration_sec = round(duration, 2)
+                store.save(job)
+            elif job.duration_sec is None:
+                job.duration_sec = 0
 
         spec = get_instrument(job.instrument)
+        _prepare_score_midi(job, spec, midi_path, wav_path)
         job.stage = "scoring"
         job.message = f"正在排出{spec.name}谱"
         store.save(job)

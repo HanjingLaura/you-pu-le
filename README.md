@@ -2,15 +2,14 @@
 
 纯钢琴演奏视频（或音频）→ MIDI → 网页上的大谱表草稿。
 
-## 第一版做什么
+四个界面：
 
-- 上传 mp4 / mov / wav / mp3，最长 3 分钟
-- 用 ffmpeg 抽单声道 16kHz 音频
-- 用 ByteDance High-resolution Piano Transcription 转 MIDI
-- 用 music21 量化并拆成高音 / 低音谱号
-- 浏览器里用 OpenSheetMusicDisplay 看谱，下载 MIDI 和 MusicXML
+- 校音：本机麦克风，实时音高
+- 节拍：本机发声的节拍器
+- 扒谱：钢琴独奏视频 / 音频 → MIDI → 大谱表草稿
+- 移调：上传 MusicXML / MIDI，选原调和目标调，导出移调后的谱
 
-这是草稿谱，不是出版谱。装饰音、踏板、临时变音、左右手交叉都可能要再改。
+扒谱仍是草稿谱，不是出版谱。装饰音、踏板、临时变音、左右手交叉都可能要再改。
 
 ## 环境
 
@@ -31,7 +30,7 @@ cd C:\Users\hj120\Desktop\Keyprint
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 ```powershell
@@ -39,10 +38,12 @@ cd frontend
 npm run dev
 ```
 
-浏览器打开 http://localhost:3000
+浏览器打开 http://localhost:3000（页面会同源转发 `/jobs`、`/instruments` 到后端，不必再单独开 8000）。
+
+Cloud Agent 上打开：点 Agents 窗口的插头图标 → Forwarded Ports → `localhost:3000`。手机上看这个对话时，本机地址打不到这台机器，请用电脑打开同一条 Agent，或在自己的 Windows 上跑 `.\start.ps1`。
 
 ## 目录
 
-- `frontend`：Next.js 上传、进度、看谱
-- `backend`：FastAPI + 转录 + 排谱
+- `frontend`：Next.js，四个界面
+- `backend`：FastAPI + 转录 + 排谱 + 乐器移调
 - `DESIGN.md`：界面约定

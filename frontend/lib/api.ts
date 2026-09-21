@@ -1,5 +1,6 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+// Same-origin by default so the browser only needs the Next.js port.
+// `next.config.ts` rewrites /instruments, /jobs, /key-transpose, /demo, /health to FastAPI.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export type JobStage =
   | "queued"
@@ -35,14 +36,15 @@ export type Job = {
   key_name: string | null;
   bpm: number | null;
   instrument: string;
+  source_instrument?: string;
   midi_url: string | null;
   musicxml_url: string | null;
 };
 
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { id: "piano", name: "钢琴", group: "键盘", key_label: "C", staff_label: "大谱表", write_semitones: 0, grand: true, clef: "grand", hint: "双手，高音谱号 + 低音谱号，按实音记谱。" },
-  { id: "flute", name: "长笛", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，按实音记谱。" },
-  { id: "oboe", name: "双簧管", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，按实音记谱。" },
+  { id: "flute", name: "长笛", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "oboe", name: "双簧管", group: "木管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
   { id: "clarinet_bb", name: "单簧管", group: "木管", key_label: "降B", staff_label: "高音谱号 · 移调", write_semitones: 2, grand: false, clef: "treble", hint: "降B 调。写成比实音高一个大二度。" },
   { id: "soprano_sax", name: "高音萨克斯", group: "木管", key_label: "降B", staff_label: "高音谱号 · 移调", write_semitones: 2, grand: false, clef: "treble", hint: "降B 调。写成比实音高一个大二度。" },
   { id: "alto_sax", name: "中音萨克斯", group: "木管", key_label: "降E", staff_label: "高音谱号 · 移调", write_semitones: 9, grand: false, clef: "treble", hint: "降E 调。写成比实音高一个大六度。" },
@@ -50,12 +52,12 @@ export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { id: "bari_sax", name: "上低音萨克斯", group: "木管", key_label: "降E", staff_label: "高音谱号 · 移调", write_semitones: 21, grand: false, clef: "treble", hint: "降E 调。写成比实音高一个八度加一个大六度。" },
   { id: "trumpet_bb", name: "小号", group: "铜管", key_label: "降B", staff_label: "高音谱号 · 移调", write_semitones: 2, grand: false, clef: "treble", hint: "降B 调。写成比实音高一个大二度。" },
   { id: "horn_f", name: "圆号", group: "铜管", key_label: "F", staff_label: "高音谱号 · 移调", write_semitones: 7, grand: false, clef: "treble", hint: "F 调。写成比实音高一个纯五度。" },
-  { id: "trombone", name: "长号", group: "铜管", key_label: "C", staff_label: "低音谱号", write_semitones: 0, grand: false, clef: "bass", hint: "C 调，按实音记谱。" },
-  { id: "tuba", name: "大号", group: "铜管", key_label: "C", staff_label: "低音谱号", write_semitones: 0, grand: false, clef: "bass", hint: "C 调，按实音记谱。" },
-  { id: "violin", name: "小提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，按实音记谱。" },
-  { id: "viola", name: "中提琴", group: "弦乐", key_label: "C", staff_label: "中音谱号", write_semitones: 0, grand: false, clef: "alto", hint: "C 调，按实音记谱。" },
-  { id: "cello", name: "大提琴", group: "弦乐", key_label: "C", staff_label: "低音谱号", write_semitones: 0, grand: false, clef: "bass", hint: "C 调，按实音记谱。" },
-  { id: "guitar", name: "吉他", group: "弦乐", key_label: "C", staff_label: "高音谱号 8va", write_semitones: 12, grand: false, clef: "treble8vb", hint: "C 调。高音谱号，写成比实音高一个八度。" },
+  { id: "trombone", name: "长号", group: "铜管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "tuba", name: "大号", group: "铜管", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "violin", name: "小提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "viola", name: "中提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "cello", name: "大提琴", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 0, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，按实音记谱。" },
+  { id: "guitar", name: "吉他", group: "弦乐", key_label: "C", staff_label: "高音谱号", write_semitones: 12, grand: false, clef: "treble", hint: "C 调，单声部，高音谱号，写成比实音高一个八度。" },
 ];
 
 export const DEFAULT_INSTRUMENT = "piano";
@@ -71,11 +73,17 @@ export async function listInstruments(): Promise<Instrument[]> {
   }
 }
 
-export async function createJob(file?: File, url?: string, instrument?: string): Promise<Job> {
+export async function createJob(
+  file?: File,
+  url?: string,
+  instrument?: string,
+  sourceInstrument?: string,
+): Promise<Job> {
   const body = new FormData();
   if (file) body.append("file", file);
   if (url) body.append("url", url);
   if (instrument) body.append("instrument", instrument);
+  if (sourceInstrument) body.append("source_instrument", sourceInstrument);
   const response = await fetch(`${API_BASE}/jobs`, {
     method: "POST",
     body,
@@ -102,6 +110,51 @@ export async function getMusicXml(id: string): Promise<string> {
     throw new Error(await readError(response));
   }
   return response.text();
+}
+
+export type TransposeJob = Job & {
+  from_key?: string;
+  to_key?: string;
+};
+
+export async function inspectScoreKey(file: File): Promise<string | null> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(`${API_BASE}/key-transpose/inspect`, {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) return null;
+  const payload = (await response.json()) as { key?: string };
+  return payload.key || null;
+}
+
+export async function transposeScore(file: File, fromKey: string, toKey: string): Promise<TransposeJob> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("from_key", fromKey);
+  body.append("to_key", toKey);
+  const response = await fetch(`${API_BASE}/key-transpose`, {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return response.json();
+}
+
+export async function retranposeJob(id: string, toKey: string): Promise<TransposeJob> {
+  const body = new FormData();
+  body.append("to_key", toKey);
+  const response = await fetch(`${API_BASE}/key-transpose/${id}`, {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return response.json();
 }
 
 export async function rescoreJob(id: string, instrument: string): Promise<Job> {

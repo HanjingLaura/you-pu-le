@@ -2,6 +2,8 @@ fastapi==0.115.8
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 numpy==1.26.4
+# CPU wheel is enough for Cloud Agent / first install. Swap for cu124 locally if needed.
+torch>=2.2.0
 librosa==0.10.2.post1
 soundfile==0.13.1
 imageio-ffmpeg==0.5.1

@@ -189,9 +189,12 @@ def _render_sine_wav(events: list[tuple[int, float, float]], path: Path, bpm: fl
 
 
 def _pitches_from_wav(path: Path, starts: list[float], sr: int = 16000) -> list[set[int]]:
-    import librosa
+    import wave
 
-    audio, _ = librosa.load(str(path), sr=sr, mono=True)
+    with wave.open(str(path), "rb") as handle:
+        raw = handle.readframes(handle.getnframes())
+        audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32767.0
+        assert handle.getframerate() == sr
     found = []
     for start in starts:
         begin = int((start + 0.05) * sr)
@@ -219,3 +222,19 @@ def test_bpm_from_known_pulse():
     notes = [PianoNote(midi=60, start=index * 0.5, duration=0.4) for index in range(8)]
     bpm = estimate_bpm(notes)
     assert 100 <= bpm <= 140
+
+
+def test_c_major_scale_known_key_and_hands(tmp_path: Path):
+    events = []
+    for index, (low, high) in enumerate(zip([48, 50, 52, 53, 55, 57, 59, 60], [60, 62, 64, 65, 67, 69, 71, 72])):
+        start = index * 0.5
+        events.append((low, start, 0.4))
+        events.append((high, start, 0.4))
+    midi_path = _write_midi(tmp_path / "c-major.mid", events, bpm=120)
+    xml_path = tmp_path / "c-major.musicxml"
+    result = midi_to_musicxml(midi_path, xml_path, "C 大调音阶")
+    right, left = _staff_pitches(xml_path)
+    assert set([60, 62, 64, 65, 67, 69, 71, 72]).issubset(set(right))
+    assert set([48, 50, 52, 53, 55, 57, 59]).issubset(set(left))
+    assert result["key"].startswith("C")
+    assert "minor" not in result["key"].lower()

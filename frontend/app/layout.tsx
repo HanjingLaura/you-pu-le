@@ -1,9 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { AppNav } from "@/components/AppNav";
+import { SpiderSolitaire } from "@/components/SpiderSolitaire";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "有谱了",
-  description: "上传钢琴独奏，扒成大谱表草稿。",
+  description: "校音、节拍、扒谱、移调。",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -13,7 +21,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <SpiderSolitaire />
+        {children}
+        <AppNav />
+      </body>
     </html>
   );
 }

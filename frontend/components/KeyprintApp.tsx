@@ -12,9 +12,8 @@ import {
   type Job,
 } from "@/lib/api";
 import { DotMatrixLoader } from "./DotMatrixLoader";
-import { InstrumentPicker, keyLabelForInstrument } from "./InstrumentPicker";
+import { InstrumentPicker } from "./InstrumentPicker";
 import { ScoreViewer } from "./ScoreViewer";
-import { SpiderSolitaire } from "./SpiderSolitaire";
 
 const ACCEPT = ".mp4,.mov,.webm,.mkv,.wav,.mp3,.m4a,.flac,.ogg";
 
@@ -178,50 +177,42 @@ export function KeyprintApp() {
   if (musicXml && job?.stage === "done") {
     return (
       <div className="result-shell">
-        <div className="result-bar">
-          <div>
-            <p className="result-bar__brand">有谱了</p>
-            <p className="result-bar__note">
-              {keyLabelForInstrument(job.instrument || instrumentId)}
-              {rescoring ? " · 正在换谱" : ""}
-            </p>
-          </div>
-          <div className="result-bar__actions">
+          <div className="result-bar">
             <InstrumentPicker
               value={job.instrument || instrumentId}
               disabled={rescoring}
               onChange={changeInstrument}
             />
-            {job.id !== "demo" ? (
-              <>
-                <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`}>
-                  <DownloadSimple className="size-4" />
-                  MIDI
-                </a>
-                <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`}>
-                  <DownloadSimple className="size-4" />
-                  MusicXML
-                </a>
-              </>
-            ) : null}
-            <button type="button" className="text-button" onClick={reset}>
-              再来一次
-            </button>
+            <div className="result-bar__actions">
+              {job.id !== "demo" ? (
+                <>
+                  <a className="download-button ghost" href={`${API_BASE}/jobs/${job.id}/midi`} aria-label="下载 MIDI">
+                    <DownloadSimple className="size-4 shrink-0" />
+                    <span className="download-button__text">MIDI</span>
+                  </a>
+                  <a className="download-button" href={`${API_BASE}/jobs/${job.id}/musicxml`} aria-label="下载 MusicXML">
+                    <DownloadSimple className="size-4 shrink-0" />
+                    <span className="download-button__text">XML</span>
+                  </a>
+                </>
+              ) : null}
+              <button type="button" className="text-button" onClick={reset}>
+                再来一次
+              </button>
+            </div>
           </div>
-        </div>
-        {error ? (
-          <p className="error-message result-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <ScoreViewer musicXml={musicXml} />
+          {error ? (
+            <p className="error-message result-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <ScoreViewer musicXml={musicXml} />
       </div>
     );
   }
 
   return (
     <div className="app-frame">
-      <SpiderSolitaire />
       <main className="work-panel">
         <header className="panel-heading">
           <h1>有谱了</h1>
@@ -248,6 +239,7 @@ export function KeyprintApp() {
           <button
             type="button"
             className={`drop-well ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
+            aria-label="放入文件"
             disabled={busy}
             onClick={() => inputRef.current?.click()}
             onDragEnter={(event) => {
@@ -274,30 +266,23 @@ export function KeyprintApp() {
             {file ? (
               <span className="drop-well__file">
                 <span className="drop-well__name">{file.name}</span>
-                <span className="drop-well__meta">
-                  {formatSize(file.size)} · 点击可更换
-                </span>
+                <span className="drop-well__meta">{formatSize(file.size)}</span>
               </span>
-            ) : (
-              <span className="drop-well__copy">
-                <span className="drop-well__title">{dragging ? "松开放入" : "把视频或音频放进来"}</span>
-                <span className="drop-well__hint">MP4 / MOV / WAV / MP3，最长 3 分钟</span>
-              </span>
-            )}
+            ) : null}
           </button>
 
           <label className="link-field">
-            <span className="field-label">或粘贴链接</span>
             <input
               value={url}
               disabled={busy || Boolean(file)}
+              aria-label="链接"
               onChange={(event) => {
                 setUrl(event.target.value);
                 setFile(null);
                 setError(null);
                 setJob(null);
               }}
-              placeholder="YouTube / B 站 / 音频直链"
+              placeholder="链接"
             />
           </label>
 

@@ -4,12 +4,16 @@ import logging
 import threading
 from functools import lru_cache
 
-import librosa
 import numpy as np
-import torch
 
 from .checkpoint import ensure_checkpoint
 from .config import CHECKPOINT_PATH, SAMPLE_RATE
+
+try:
+    import librosa
+    import torch
+except ImportError as exc:  # pragma: no cover - environment/setup
+    raise RuntimeError("扒谱引擎还没装好。需要先安装 torch、librosa。") from exc
 
 log = logging.getLogger("keyprint")
 _LOAD_LOCK = threading.Lock()
