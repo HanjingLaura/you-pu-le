@@ -1,4 +1,9 @@
 {
   "framework": "fastapi",
-  "installCommand": "pip install -r requirements-vercel.txt"
+  "installCommand": "pip install -r requirements-vercel.txt",
+  "functions": {
+    "main.py": {
+      "excludeFiles": "{tests/**,**/music21/corpus/**/*.{abc,mxl,krn,xml,rntxt,musicxml,mus,musx,png,psd,gz}}"
+    }
+  }
 }
