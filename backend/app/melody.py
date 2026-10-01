@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pretty_midi
 
-from .piano import PianoNote, merge_unisons
+from .piano import PianoNote
 
 SAMPLE_RATE = 16000
 HOP_LENGTH = 160
@@ -25,14 +25,18 @@ def track_melody(wav_path, low: int | None = None, high: int | None = None) -> l
     if peak > 0:
         audio = audio / peak * 0.95
 
-    fmin = librosa.note_to_hz("C2")
-    fmax = librosa.note_to_hz("C7")
+    # Cover the low brass and high violin ranges supported by the app.
+    # C2..C7 silently excluded tuba fundamentals and violin high notes.
+    fmin = librosa.note_to_hz("C1")
+    fmax = librosa.note_to_hz("C8")
     if low is not None:
         fmin = max(fmin, float(librosa.midi_to_hz(max(24, low - 7))))
     if high is not None:
         fmax = min(fmax, float(librosa.midi_to_hz(min(108, high + 7))))
     if fmax <= fmin:
-        fmin, fmax = librosa.note_to_hz("C2"), librosa.note_to_hz("C7")
+        fmin, fmax = librosa.note_to_hz("C1"), librosa.note_to_hz("C8")
+
+    frame_length = max(FRAME_LENGTH, 2 ** int(np.ceil(np.log2(4 * sr / fmin))))
 
     f0, voiced_flag, voiced_probs = librosa.pyin(
         audio,
@@ -40,7 +44,7 @@ def track_melody(wav_path, low: int | None = None, high: int | None = None) -> l
         fmax=fmax,
         sr=sr,
         hop_length=HOP_LENGTH,
-        frame_length=FRAME_LENGTH,
+        frame_length=frame_length,
     )
     times = librosa.times_like(f0, sr=sr, hop_length=HOP_LENGTH)
 
@@ -51,41 +55,22 @@ def track_melody(wav_path, low: int | None = None, high: int | None = None) -> l
         else:
             midis.append(None)
 
-    raw: list[list[float]] = []
-    current: list[float] | None = None
-    pending: int | None = None
-    pending_count = 0
-    for time, midi in zip(times, midis):
-        if midi is None:
-            if current is not None:
-                current[1] = float(time)
-                if current[1] - current[0] >= MIN_NOTE_SEC:
-                    raw.append(current)
-                current = None
-            pending = None
-            pending_count = 0
-            continue
-        if current is None:
-            current = [float(time), float(time), float(midi)]
-            continue
-        if midi == int(current[2]):
-            current[1] = float(time)
-            pending = None
-            pending_count = 0
-            continue
-        pending_count = pending_count + 1 if pending == midi else 1
-        pending = midi
-        if pending_count >= HOLD_FRAMES:
-            current[1] = float(time)
-            if current[1] - current[0] >= MIN_NOTE_SEC:
-                raw.append(current)
-            current = [float(time), float(time), float(midi)]
-            pending = None
-            pending_count = 0
-        else:
-            current[1] = float(time)
-    if current is not None and current[1] - current[0] >= MIN_NOTE_SEC:
-        raw.append(current)
+    # Spectral flux can peak at note releases, especially on high notes.
+    # Repetition splitting requires a rise in energy, not a change of timbre.
+    from scipy.ndimage import gaussian_filter1d
+
+    rms = librosa.feature.rms(
+        y=audio, frame_length=max(2 * HOP_LENGTH, frame_length // 2), hop_length=HOP_LENGTH,
+    )[0]
+    # A 20 ms energy window alone oscillates at low fundamentals. Smooth
+    # across frames so waveform cycles are not treated as note re-attacks.
+    rms = gaussian_filter1d(rms, sigma=3)
+    attack_strength = np.maximum(np.diff(rms, prepend=0.), 0.)
+    attack_strength[attack_strength < float(np.max(attack_strength)) * .1] = 0.
+    attacks = librosa.onset.onset_detect(
+        onset_envelope=attack_strength, sr=sr, hop_length=HOP_LENGTH, units="time",
+    )
+    raw = segment_frames(times, midis, attacks)
 
     notes = [
         PianoNote(
@@ -97,7 +82,62 @@ def track_melody(wav_path, low: int | None = None, high: int | None = None) -> l
         )
         for item in raw
     ]
-    return apply_range(merge_unisons(notes), low, high)
+    return apply_range(notes, low, high)
+
+
+def segment_frames(times, midis, attacks=()) -> list[list[float]]:
+    """Debounce pitch changes without adding HOLD_FRAMES of onset latency.
+
+    Bridge at most two missing frames; genuine re-attacks split repeated notes
+    even if pYIN remains voiced throughout the attack.
+    """
+    if len(times) == 0:
+        return []
+    step = HOP_LENGTH / SAMPLE_RATE
+    attack_frames = {int(np.argmin(np.abs(np.asarray(times) - t))) for t in attacks}
+    raw = []
+    current = None
+    pending = None
+    pending_count = missing = 0
+
+    def finish(end):
+        if current is not None and end - current[0] >= MIN_NOTE_SEC:
+            raw.append([current[0], end, current[2]])
+
+    for index, (time, midi) in enumerate(zip(times, midis)):
+        time = float(time)
+        if midi is None:
+            missing += 1
+            pending = None
+            pending_count = 0
+            if current is not None and missing > 2:
+                finish(time - (missing - 1) * step)
+                current = None
+            continue
+        missing = 0
+        if current is None:
+            current = [time, time + step, float(midi)]
+            continue
+        if midi == int(current[2]):
+            if index in attack_frames and time - current[0] >= MIN_NOTE_SEC:
+                finish(time)
+                current = [time, time + step, float(midi)]
+            else:
+                current[1] = time + step
+            pending = None
+            pending_count = 0
+            continue
+        pending_count = pending_count + 1 if pending == midi else 1
+        pending = midi
+        if pending_count >= HOLD_FRAMES:
+            boundary = time - (HOLD_FRAMES - 1) * step
+            finish(boundary)
+            current = [boundary, time + step, float(midi)]
+            pending = None
+            pending_count = 0
+    if current is not None:
+        finish(current[1])
+    return raw
 
 
 def apply_range(notes: list[PianoNote], low: int | None, high: int | None) -> list[PianoNote]:

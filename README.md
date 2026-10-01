@@ -11,6 +11,18 @@
 
 扒谱仍是草稿谱，不是出版谱。装饰音、踏板、临时变音、左右手交叉都可能要再改。
 
+## 转谱与移调算法
+
+识音与节奏对齐分开处理。钢琴仍使用 [Piano Transcription Inference](https://github.com/qiuqiangkong/piano_transcription_inference)，单旋律使用 [librosa pYIN](https://librosa.org/doc/0.10.2/generated/librosa.pyin.html)。单旋律现在会短暂桥接丢失的音高帧、回溯音高切换的起点，并按重新起音切分同音重复。
+
+- 上传 MIDI：按原有速度表把秒转换成拍数，包含中途变速，避免把八分音符的间隔当作一拍。
+- 上传音频：使用 [librosa 动态规划节拍跟踪](https://librosa.org/doc/0.10.2/generated/librosa.beat.beat_track.html)，比较半速、原速和倍速候选；按局部节拍插值对齐音符起止时间。失败时退回合并和弦起音后的音符节奏估计。
+- 单声部量化支持十六分音符和附点八分音符，不再统一压到八分音符。乐谱目前仍默认 4/4，不自动判断拍号；三连音、自由速度、弱起小节和复杂多声部仍需人工校对。
+- `POST /jobs` 可附加表单参数 `bpm`（30–240）作为速度提示，界面暂未提供这个输入。节拍的半速／倍速有时无法仅凭声音唯一确定；已知速度可以帮助消除歧义。
+- 调性移调默认选择最近音程（范围 −5 到 +6 半音，如 C→G 为下降五个半音）。乐器的记谱移调仍按乐器定义处理。MusicXML 和压缩 MXL 在本机和 Vercel 使用同一个 music21 引擎，保留多谱表、声部、连音、拍号与速度；MIDI 导出直接改事件音高，保留时间、踏板、控制事件和鼓轨，越界报错而不夹到边界音高。
+
+没有用真实录音数据集验证识音准确率提升。回归验证包括已知旋律的合成音频、节拍脉冲、速度变化、快速同音重复和移调结构保留。Spotify 的 [Basic Pitch](https://github.com/spotify/basic-pitch) 和 [Beat This!](https://github.com/CPJKU/beat_this) 可作为后续真实录音对比候选；当前没有引入额外模型或替换钢琴模型。
+
 ## 环境
 
 - Windows，Python 3.10（仓库里的 `.venv` 按 3.10 建）

@@ -43,6 +43,7 @@ class Job:
     pedal_count: int | None = None
     key_name: str | None = None
     bpm: float | None = None
+    tempo_hint: float | None = None
     source_url: str | None = None
     instrument: str = DEFAULT_INSTRUMENT
     source_instrument: str = DEFAULT_INSTRUMENT
@@ -66,6 +67,7 @@ class Job:
             "pedal_count": self.pedal_count,
             "key_name": self.key_name,
             "bpm": self.bpm,
+            "tempo_hint": self.tempo_hint,
             "instrument": self.instrument,
             "source_instrument": self.source_instrument,
             "midi_url": f"/jobs/{self.id}/midi" if self.stage == "done" else None,
@@ -86,6 +88,7 @@ class Job:
             pedal_count=data.get("pedal_count"),
             key_name=data.get("key_name"),
             bpm=data.get("bpm"),
+            tempo_hint=data.get("tempo_hint"),
             source_url=data.get("source_url"),
             instrument=data.get("instrument") or DEFAULT_INSTRUMENT,
             source_instrument=data.get("source_instrument") or DEFAULT_INSTRUMENT,

@@ -42,6 +42,20 @@ def test_pyin_recovers_sine_scale(tmp_path: Path):
         assert any(abs(item - pitch) <= 1 for item in found)
 
 
+def test_pyin_supports_low_brass_fundamentals(tmp_path: Path):
+    pitches = [28, 31, 33]
+    wav_path = _sine_scale(tmp_path / "low.wav", pitches, beat=.7)
+    found = [n.midi for n in track_melody(wav_path, 28, 58)]
+    assert found == pitches
+
+
+def test_pyin_supports_high_violin_notes(tmp_path: Path):
+    pitches = [96, 98, 100]
+    wav_path = _sine_scale(tmp_path / "high.wav", pitches, beat=.7)
+    found = [n.midi for n in track_melody(wav_path)]
+    assert found == pitches
+
+
 def test_melody_midi_writes_single_line(tmp_path: Path):
     notes = [
         PianoNote(midi=60, start=0.0, duration=0.4),
