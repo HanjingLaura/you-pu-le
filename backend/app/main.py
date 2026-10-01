@@ -277,6 +277,7 @@ async def create_job(
     url: str | None = Form(None),
     instrument: str | None = Form(None),
     source_instrument: str | None = Form(None),
+    bpm: float | None = Form(None, ge=30, le=240),
 ) -> dict:
     if _on_vercel():
         raise HTTPException(501, "线上先用校音、节拍和移调。扒谱请在电脑上打开。")
@@ -328,6 +329,7 @@ async def create_job(
     else:
         raise HTTPException(400, "请上传视频 / 音频 / MIDI，或粘贴链接。")
 
+    job.tempo_hint = bpm
     background_tasks.add_task(run_job, job.id)
     store.save(job)
     return job.to_dict()
@@ -444,7 +446,11 @@ def _rescore_locked(job_id: str, instrument_id: str) -> dict:
     store.save(job)
     try:
         _prepare_score_midi(job, spec, midi_path, wav_path)
-        scored = midi_to_musicxml(midi_path, xml_path, Path(job.filename).stem, spec.id)
+        scored = midi_to_musicxml(
+            midi_path, xml_path, Path(job.filename).stem, spec.id,
+            rhythm_wav_path=wav_path if wav_path.exists() else None,
+            bpm=job.tempo_hint,
+        )
         job.key_name = scored["key"]
         job.bpm = scored["bpm"]
         job.note_count = scored["note_count"]
@@ -563,7 +569,11 @@ def _run_job_locked(job: Job) -> None:
         job.message = f"正在排出{spec.name}谱"
         store.save(job)
         title = Path(job.filename).stem
-        scored = midi_to_musicxml(midi_path, xml_path, title, spec.id)
+        scored = midi_to_musicxml(
+            midi_path, xml_path, title, spec.id,
+            rhythm_wav_path=wav_path if wav_path.exists() else None,
+            bpm=job.tempo_hint,
+        )
         job.key_name = scored["key"]
         job.bpm = scored["bpm"]
         job.note_count = scored["note_count"]

@@ -15,7 +15,7 @@ from .instruments import (
     music21_instrument,
 )
 from .melody import track_melody
-from .piano import PianoEvent, estimate_bpm, fit_duration, load_notes, prepare_piano, quantize_voice
+from .piano import PianoEvent, fit_duration, load_notes, prepare_piano, quantize_voice
 
 log = logging.getLogger("keyprint")
 
@@ -91,12 +91,14 @@ def midi_to_musicxml(
     title: str,
     instrument_id: str = DEFAULT_INSTRUMENT,
     wav_path: Path | None = None,
+    rhythm_wav_path: Path | None = None,
+    bpm: float | None = None,
 ) -> dict:
     spec = get_instrument(instrument_id)
     heading = display_title(title)
 
     if spec.grand:
-        events, bpm = prepare_piano(midi_path)
+        events, bpm = prepare_piano(midi_path, bpm, rhythm_wav_path)
         detected_key = detect_key([pitch for event in events for pitch in event.pitches])
         score = _piano_score(events, detected_key, bpm, heading)
         note_count = sum(len(event.pitches) for event in events)
@@ -109,8 +111,11 @@ def midi_to_musicxml(
                 log.warning("melody tracker failed, using MIDI: %s", exc)
         if not notes:
             notes = load_notes(midi_path)
-        bpm = estimate_bpm(notes) if notes else 80.0
-        events = _trim_leading_measures(quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high))
+        from .rhythm import score_grid
+
+        grid = score_grid(midi_path, notes, rhythm_wav_path, bpm)
+        bpm = grid.bpm
+        events = _trim_leading_measures(quantize_voice(notes, bpm, spec.sounding_low, spec.sounding_high, grid))
         detected_key = detect_key([pitch for event in events for pitch in event.pitches])
         score = _single_staff_from_events(events, detected_key, bpm, heading, spec)
         note_count = len(events)

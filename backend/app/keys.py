@@ -46,7 +46,8 @@ def require_key(key_id: str) -> str:
 
 
 def semitones_between(from_key: str, to_key: str) -> int:
-    return (KEY_PC[require_key(to_key)] - KEY_PC[require_key(from_key)]) % 12
+    distance = (KEY_PC[require_key(to_key)] - KEY_PC[require_key(from_key)]) % 12
+    return distance - 12 if distance > 6 else distance
 
 
 def write_keys(directory: Path, from_key: str, to_key: str) -> None:

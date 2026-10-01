@@ -74,8 +74,8 @@ def test_lite_c_scale_midi_to_g(tmp_path: Path):
     result = transpose_score_file_lite(
         source, tmp_path / "score.musicxml", tmp_path / "score.mid", "C", "G", "音阶"
     )
-    assert result["semitones"] == 7
-    assert _pitches_from_xml(tmp_path / "score.musicxml") == [67, 69, 71, 72, 74, 76, 78, 79]
+    assert result["semitones"] == -5
+    assert _pitches_from_xml(tmp_path / "score.musicxml") == [55, 57, 59, 60, 62, 64, 66, 67]
 
 
 def test_lite_c_scale_xml_to_f(tmp_path: Path):

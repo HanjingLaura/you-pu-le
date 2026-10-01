@@ -6,7 +6,7 @@ from pathlib import Path
 from music21 import converter, interval, key as keymod
 from music21 import metadata, note, pitch, stream
 
-from .keys import KEY_TONICS, TransposeError, write_keys
+from .keys import KEY_TONICS, TransposeError, semitones_between, write_keys
 from .score import _clean_musicxml, display_title
 
 log = logging.getLogger("keyprint")
@@ -74,7 +74,12 @@ def detect_written_key(score) -> str:
 def _interval(from_key: keymod.Key, to_key: keymod.Key) -> interval.Interval:
     source = pitch.Pitch(from_key.tonic.name + "4")
     target = pitch.Pitch(to_key.tonic.name + "4")
-    if target.midi < source.midi:
+    distance = (target.midi - source.midi) % 12
+    if distance > 6:
+        distance -= 12
+    while target.midi - source.midi > distance:
+        target.octave -= 1
+    while target.midi - source.midi < distance:
         target.octave += 1
     return interval.Interval(source, target)
 
@@ -89,10 +94,35 @@ def _ensure_key(score, target: keymod.Key) -> None:
         score.insert(0, target)
         return
     for part in parts:
-        existing = list(part.getElementsByClass((keymod.Key, keymod.KeySignature)))
+        existing = list(part.recurse().getElementsByClass((keymod.Key, keymod.KeySignature)))
         if existing:
             continue
-        part.insert(0, target)
+        import copy
+        part.insert(0, copy.deepcopy(target))
+
+
+def transpose_midi(source: Path, dest: Path, semitones: int) -> None:
+    """Change pitches without re-quantizing timing or losing MIDI metadata."""
+    import mido
+
+    midi = mido.MidiFile(str(source))
+    for track in midi.tracks:
+        for message in track:
+            if message.type in {"note_on", "note_off", "polytouch"} and message.channel != 9:
+                value = message.note + semitones
+                if not 0 <= value <= 127:
+                    raise TransposeError("移调后有音符超出 MIDI 音域，请选择更近的目标调。")
+                message.note = value
+            elif message.type == "key_signature":
+                shifted = keymod.Key(message.key).transpose(semitones)
+                name = shifted.tonic.name.replace("-", "b")
+                suffix = "m" if shifted.mode == "minor" else ""
+                try:
+                    message.key = name + suffix
+                except ValueError:
+                    message.key = _PC_TO_ID[shifted.tonic.pitchClass] + suffix
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    midi.save(str(dest))
 
 
 def transpose_score_file(
@@ -109,6 +139,11 @@ def transpose_score_file(
     step = _interval(source_key, target_key)
     if step.semitones:
         score.transpose(step, inPlace=True)
+    for item in score.recurse().notes:
+        if isinstance(item, note.Unpitched):
+            continue
+        if any(not 0 <= p.ps <= 127 for p in item.pitches):
+            raise TransposeError("移调后有音符超出 MIDI 音域，请选择更近的目标调。")
     _ensure_key(score, target_key)
     if score.metadata is None:
         score.insert(0, metadata.Metadata())
@@ -117,7 +152,11 @@ def transpose_score_file(
     xml_path.parent.mkdir(parents=True, exist_ok=True)
     score.write("musicxml", fp=str(xml_path))
     _clean_musicxml(xml_path)
-    score.write("midi", fp=str(midi_path))
+    midi_path.parent.mkdir(parents=True, exist_ok=True)
+    if source.suffix.lower() in {".mid", ".midi"}:
+        transpose_midi(source, midi_path, semitones_between(from_key, to_key))
+    else:
+        score.write("midi", fp=str(midi_path))
     write_keys(xml_path.parent, from_key, to_key)
     return {
         "from_key": from_key,
